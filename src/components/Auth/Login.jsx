@@ -1,37 +1,23 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { handleLogin as authLogin } from "../../services/authService";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
   
   const handleLogin = async (e) => {
     e.preventDefault();
-    try {
-      const response = await fetch("http://localhost:8080/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await response.json();
-      console.log(data)
-      if (!response.ok) {
-        setError(data.error || "Errore generico");
-      } else {
-        setError(null);
-        // Salva il token e le info utente se presenti
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          document.cookie = `token=${data.token}; path=/;`;
-          navigate('/dashboard/')
-        }
-      }
-    } catch (err) {
-      setError("Errore di rete");
-      setResult(null);
+    
+    const loginResult = await authLogin(email, password);
+    
+    if (loginResult.success) {
+      setError(null);
+      navigate('/dashboard/');
+    } else {
+      setError(loginResult.error);
     }
   };
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getCurrentUser, handleLogout } from "../../services/authService";
 
 export default function Navbar({ currentPage }) {
   const navigate = useNavigate();
@@ -7,36 +8,11 @@ export default function Navbar({ currentPage }) {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      try {
-        const response = await fetch("http://localhost:8080/api/me", {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-        });
-        if (response.ok) {
-          const data = await response.json();
-          console.log("User data:", data);
-          setUser(data.user || data); // adattare a seconda della risposta
-        } else {
-          setUser(null);
-        }
-      } catch (e) {
-        setUser(null);
-      }
+      const u = await getCurrentUser();
+      setUser(u);
     };
     fetchUser();
   }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    window.location.href = "/login";
-  };
 
   return (
     <nav className="bg-blue-700 text-white px-6 py-4 shadow flex items-center justify-between">
@@ -52,7 +28,9 @@ export default function Navbar({ currentPage }) {
                 : 'text-blue-100 hover:bg-blue-600 hover:text-white'
             }`}
           >
-            🏢 Stanze
+            <span className="font-semibold">
+              Prenotazioni
+            </span>
           </button>
           {user && user.ruolo === 'admin' && (
             <button
@@ -63,7 +41,9 @@ export default function Navbar({ currentPage }) {
                   : 'text-blue-100 hover:bg-blue-600 hover:text-white'
               }`}
             >
-              ⚙️ Admin
+            <span className="font-semibold">
+              Pannello Admin
+            </span>
             </button>
           )}
         </div>

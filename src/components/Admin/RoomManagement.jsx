@@ -3,6 +3,7 @@ import { initialRoomsData } from "../../data/roomsData";
 import AdminRoomCard from "./AdminRoomCard";
 import AdvancedFiltersModal from "../Room/AdvancedFiltersModal";
 import FloorHeader from "../Room/FloorHeader";
+import RoomAdminModal from "./RoomAdminModal";
 
 export default function RoomManagement({ currentUser }) {
   const [rooms, setRooms] = useState(initialRoomsData);
@@ -11,6 +12,9 @@ export default function RoomManagement({ currentUser }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [showRoomModal, setShowRoomModal] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Verifica che solo gli admin possano accedere
   if (currentUser.ruolo !== "admin") {
@@ -34,6 +38,36 @@ export default function RoomManagement({ currentUser }) {
     setRooms(rooms.map(room => 
       room.id === updatedRoom.id ? updatedRoom : room
     ));
+  };
+
+  const handleAddRoom = () => {
+    setSelectedRoom(null);
+    setIsEditing(false);
+    setShowRoomModal(true);
+  };
+
+  const handleSaveRoom = (roomData, editing) => {
+    if (editing) {
+      // Modifica stanza esistente
+      setRooms(rooms.map(room => 
+        room.id === roomData.id ? roomData : room
+      ));
+    } else {
+      // Aggiungi nuova stanza
+      const newRoom = {
+        ...roomData,
+        id: Date.now(), // ID temporaneo per il mock
+        status: "libera"
+      };
+      setRooms([...rooms, newRoom]);
+    }
+    setShowRoomModal(false);
+    setSelectedRoom(null);
+  };
+
+  const closeRoomModal = () => {
+    setShowRoomModal(false);
+    setSelectedRoom(null);
   };
 
   const handleQuickFilter = (criteria) => {
@@ -118,8 +152,17 @@ export default function RoomManagement({ currentUser }) {
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">🏢 Gestione Stanze Admin</h2>
-          <div className="text-sm text-gray-600">
-            {filteredRooms.length} stanze trovate
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-600">
+              {filteredRooms.length} stanze trovate
+            </div>
+            <button
+              onClick={handleAddRoom}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+            >
+              <span className="text-lg">+</span>
+              Nuova Stanza
+            </button>
           </div>
         </div>
         
@@ -273,6 +316,16 @@ export default function RoomManagement({ currentUser }) {
         rooms={rooms}
         onQuickFilter={handleQuickFilter}
       />
+
+      {/* Modal Gestione Stanza */}
+      {showRoomModal && (
+        <RoomAdminModal
+          room={selectedRoom}
+          isEditing={isEditing}
+          onClose={closeRoomModal}
+          onSave={handleSaveRoom}
+        />
+      )}
     </div>
   );
 }

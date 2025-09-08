@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { initialRoomsData } from "../../data/roomsData";
 import RoomCard from "./RoomCard";
 import RoomModal from "./RoomModal";
@@ -7,10 +7,38 @@ import SearchAndFilters from "./SearchAndFilters";
 
 export default function RoomGrid({ user }) {
   const [rooms, setRooms] = useState(initialRoomsData);
+  const [users, setUsers] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedCapacity, setSelectedCapacity] = useState("all");
   const [selectedFloor, setSelectedFloor] = useState("all");
+
+  // Carica gli utenti per il dropdown
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const response = await fetch("http://localhost:8080/api/admin/users", {
+          method: "GET",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setUsers(data.users || data);
+        }
+      } catch (err) {
+        console.error("Errore nel caricamento degli utenti:", err);
+      }
+    };
+
+    fetchUsers();
+  }, []);
 
   // Filtra le stanze per capacità e piano
   const filteredRooms = rooms.filter(room => {
@@ -139,7 +167,8 @@ export default function RoomGrid({ user }) {
       {showModal && selectedRoom && (
         <RoomModal 
           room={selectedRoom} 
-          user={user} 
+          user={user}
+          users={users}
           onClose={closeModal}
           onSave={handleRoomSave}
         />
