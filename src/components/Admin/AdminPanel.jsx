@@ -42,32 +42,6 @@ export default function AdminPanel() {
 
     fetchUser();
   }, []);
-export const initialUsersData = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await fetch("http://localhost:8080/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await response.json();
-      console.log(data)
-      if (!response.ok) {
-        setError(data.error || "Errore generico");
-      } else {
-        setError(null);
-        // Salva il token e le info utente se presenti
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          document.cookie = `token=${data.token}; path=/;`;
-          navigate('/dashboard/')
-        }
-      }
-    } catch (err) {
-      setError("Errore di rete");
-      setResult(null);
-    }
-  };
 
   // Mostra loading durante il caricamento
   if (loading) {
@@ -97,7 +71,6 @@ export const initialUsersData = async (e) => {
       </div>
     );
   }
-
 
   const tabs = [
     { id: "users", label: "Gestione Utenti", icon: "👥" },

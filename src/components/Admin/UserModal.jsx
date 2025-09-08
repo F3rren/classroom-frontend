@@ -4,9 +4,10 @@ import { validateEmail, validateUsername, validatePassword } from "../../utils/u
 export default function UserModal({ user, isEditing, onClose, onSave }) {
   const [formData, setFormData] = useState({
     username: user?.username || "",
+    nome: user?.nome || "",
     email: user?.email || "",
     password: "",
-    role: user?.role || "user"
+    ruolo: user?.ruolo || "user"
   });
   
   const [errors, setErrors] = useState({});
@@ -19,14 +20,18 @@ export default function UserModal({ user, isEditing, onClose, onSave }) {
       newErrors.username = "Username deve essere 3-20 caratteri (lettere, numeri, . e _)";
     }
     
+    if (!formData.nome || formData.nome.trim().length < 2) {
+      newErrors.nome = "Nome deve essere almeno 2 caratteri";
+    }
+    
     if (!validateEmail(formData.email)) {
       newErrors.email = "Email non valida";
     }
     
-    if (!isEditing || formData.password) {
-      if (!validatePassword(formData.password)) {
-        newErrors.password = "Password deve essere almeno 4 caratteri";
-      }
+    if (!isEditing && !formData.password) {
+      newErrors.password = "Password è obbligatoria per nuovi utenti";
+    } else if (formData.password && !validatePassword(formData.password)) {
+      newErrors.password = "Password deve essere almeno 4 caratteri";
     }
     
     setErrors(newErrors);
@@ -39,13 +44,18 @@ export default function UserModal({ user, isEditing, onClose, onSave }) {
     if (!validate()) return;
     
     const userData = {
-      id: user?.id || Date.now(),
       username: formData.username,
+      nome: formData.nome,
       email: formData.email,
-      role: formData.role,
-      createdAt: user?.createdAt || new Date().toISOString().split('T')[0],
-      lastLogin: user?.lastLogin || new Date().toISOString().split('T')[0]
+      ruolo: formData.ruolo
     };
+    
+    // Per modifiche, includi l'ID
+    if (isEditing && user?.id) {
+      userData.id = user.id;
+      userData.dataRegistrazione = user.dataRegistrazione;
+      userData.ultimoAccesso = user.ultimoAccesso;
+    }
     
     // Includi password solo se è stata inserita
     if (formData.password) {
@@ -78,6 +88,22 @@ export default function UserModal({ user, isEditing, onClose, onSave }) {
             />
             {errors.username && (
               <p className="text-red-600 text-sm mt-1">{errors.username}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Nome *
+            </label>
+            <input
+              type="text"
+              value={formData.nome}
+              onChange={(e) => setFormData({...formData, nome: e.target.value})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Mario Rossi"
+            />
+            {errors.nome && (
+              <p className="text-red-600 text-sm mt-1">{errors.nome}</p>
             )}
           </div>
 
@@ -127,8 +153,8 @@ export default function UserModal({ user, isEditing, onClose, onSave }) {
               Ruolo
             </label>
             <select
-              value={formData.role}
-              onChange={(e) => setFormData({...formData, role: e.target.value})}
+              value={formData.ruolo}
+              onChange={(e) => setFormData({...formData, ruolo: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="user">Utente</option>

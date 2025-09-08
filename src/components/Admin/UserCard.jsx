@@ -8,7 +8,7 @@ export default function UserCard({ user, onEdit, onDelete, currentUser }) {
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
-            <h3 className="text-lg font-semibold text-gray-800">{user.username}</h3>
+            <h3 className="text-lg font-semibold text-gray-800">{user.nome}</h3>
             <span className={`px-2 py-1 rounded-full text-xs font-medium ${
               user.ruolo === 'admin' 
                 ? 'bg-purple-100 text-purple-800' 
@@ -25,10 +25,10 @@ export default function UserCard({ user, onEdit, onDelete, currentUser }) {
           
           <p className="text-gray-600 mb-1">{user.email}</p>
           <p className="text-sm text-gray-500">
-            Creato: {new Date(user.createdAt).toLocaleDateString('it-IT')}
+            Creato: {new Date(user.dataRegistrazione).toLocaleDateString('it-IT')}
           </p>
           <p className="text-sm text-gray-500">
-            Ultimo accesso: {new Date(user.lastLogin).toLocaleDateString('it-IT')}
+            Ultimo accesso: {new Date(user.ultimoAccesso).toLocaleDateString('it-IT')}
           </p>
         </div>
         
