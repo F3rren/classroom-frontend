@@ -129,7 +129,7 @@ export default function AdvancedSearch({ rooms, onSearchResults, onClose, initia
     onSearchResults(rooms); // Mostra tutte le stanze
   };
 
-  const floors = [...new Set(rooms.map(room => room.floor))].sort((a, b) => a - b);
+  const floors = [...new Set(rooms.map(room => room.piano))].sort((a, b) => a - b);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -194,7 +194,7 @@ export default function AdvancedSearch({ rooms, onSearchResults, onClose, initia
                   🏢 Piano
                 </label>
                 <select
-                  value={searchCriteria.floor}
+                  value={searchCriteria.piano}
                   onChange={(e) => setSearchCriteria({...searchCriteria, floor: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >

@@ -109,7 +109,7 @@ export default function AdminRoomCard({ room, onUpdateRoom, currentUser }) {
               <strong>Piano:</strong> {room.floor}
             </div>
             <div>
-              <strong>Capacità:</strong> {room.capacity} posti
+              <strong>Capacità:</strong> {room.capienza} posti
             </div>
           </div>
         </div>

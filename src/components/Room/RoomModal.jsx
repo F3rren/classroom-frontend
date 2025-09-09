@@ -77,30 +77,30 @@ export default function RoomModal({ room, user, users = [], onClose, onSave }) {
   };
 
   // Non permettere prenotazioni su stanze bloccate
-  if (room.status === "bloccata") {
+  if (room.stato === "bloccata") {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-2xl w-full max-w-md">
           <div className="p-6 border-b">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-800">{room.name}</h3>
-              {room.capacity && (
-                <div className={`px-3 py-1 rounded-full text-sm ${getCapacityColor(room.capacity)}`}>
-                  <span className="mr-1">{getCapacityIcon(room.capacity)}</span>
-                  {room.capacity} posti
+              {room.capienza && (
+                <div className={`px-3 py-1 rounded-full text-sm ${getCapacityColor(room.capienza)}`}>
+                  <span className="mr-1">{getCapacityIcon(room.capienza)}</span>
+                  {room.capienza} posti
                 </div>
               )}
             </div>
             <p className="text-sm text-red-600 font-semibold">🚫 Stanza Bloccata</p>
-            {room.capacity && (
-              <p className="text-xs text-gray-500 mt-1">{getCapacityLabel(room.capacity)}</p>
+            {room.capienza && (
+              <p className="text-xs text-gray-500 mt-1">{getCapacityLabel(room.capienza)}</p>
             )}
           </div>
 
           <div className="p-6">
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
               <h4 className="font-semibold text-red-800 mb-2">Motivo del blocco:</h4>
-              <p className="text-red-700">{room.blocked?.reason || "Motivo non specificato"}</p>
+              <p className="text-red-700">{room.blocked?.notePrenotazione || "Motivo non specificato"}</p>
             </div>
             
             <div className="text-sm text-gray-600 space-y-1">
@@ -130,12 +130,12 @@ export default function RoomModal({ room, user, users = [], onClose, onSave }) {
   }
 
   // Se la stanza non è libera e manca la prenotazione, mostra messaggio di errore
-  if (room.status !== "libera" && !room.booking) {
+  if (room.stato !== "libera" && !room.stato) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-2xl w-full max-w-md">
           <div className="p-6 border-b">
-            <h3 className="text-xl font-bold text-gray-800">{room.name}</h3>
+            <h3 className="text-xl font-bold text-gray-800">{room.nome}</h3>
             <p className="text-red-600 mt-2">Dati prenotazione non disponibili per questa stanza.</p>
           </div>
           <div className="p-4 border-t bg-gray-50 rounded-b-lg">
@@ -156,33 +156,33 @@ export default function RoomModal({ room, user, users = [], onClose, onSave }) {
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-md">
         <div className="p-6 border-b">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold text-gray-800">{room.name}</h3>
-            {room.capacity && (
-              <div className={`px-3 py-1 rounded-full text-sm ${getCapacityColor(room.capacity)}`}>
-                <span className="mr-1">{getCapacityIcon(room.capacity)}</span>
-                {room.capacity} posti
+            <h3 className="text-xl font-bold text-gray-800">{room.nome}</h3>
+            {room.capienza && (
+              <div className={`px-3 py-1 rounded-full text-sm ${getCapacityColor(room.capienza)}`}>
+                <span className="mr-1">{getCapacityIcon(room.capienza)}</span>
+                {room.capienza} posti
               </div>
             )}
           </div>
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600 capitalize">Stato: {room.status.replace("-", " ")}</p>
-            {room.capacity && (
-              <p className="text-xs text-gray-500">{getCapacityLabel(room.capacity)}</p>
+            <p className="text-sm text-gray-600 capitalize">Stato: {room.stato.replace("-", " ")}</p>
+            {room.capienza && (
+              <p className="text-xs text-gray-500">{getCapacityLabel(room.capienza)}</p>
             )}
           </div>
         </div>
 
         <div className="p-6">
-          {room.status !== "libera" && room.booking ? (
+          {room.stato !== "libera" && room.booking ? (
             // Mostra dettagli prenotazione esistente
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700">Prenotato da:</label>
-                <p className="text-gray-800">{room.booking.user}</p>
+                <p className="text-gray-800">{room.booking.utenteNome}</p>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700">Data:</label>
-                <p className="text-gray-800">{formatDate(room.booking.date)}</p>
+                <p className="text-gray-800">{formatDate(room.booking.dataCreazione)}</p>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700">Orario:</label>
@@ -193,7 +193,7 @@ export default function RoomModal({ room, user, users = [], onClose, onSave }) {
                 <p className="text-gray-800">{room.booking.purpose}</p>
               </div>
               {/* Mostra il pulsante cancella solo se user è definito e ha ruolo admin o è il proprietario */}
-              {user && (user.role === "admin" || room.booking.user === user.username) && (
+              {user && (user.ruolo === "admin" || room.booking.utenteNome === user.username) && (
                 <div className="flex gap-2 mt-6">
                   <button
                     onClick={handleDelete}

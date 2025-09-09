@@ -17,11 +17,12 @@ export const initialRoomsData = [
     floor: 0, 
     capacity: 200, 
     status: "prenotata", 
-    booking: { user: "Rettore", date: "2025-09-04", time: "15:00-17:00", purpose: "Cerimonia Inaugurale" }, 
+    booking: { user: "Prof. Rossi", date: "2025-09-09", time: "14:00-16:00", purpose: "Conferenza" }, 
     blocked: null,
     bookings: [
-      { date: "2025-09-04", startTime: "15:00", endTime: "17:00", user: "Rettore" },
-      { date: "2025-09-05", startTime: "09:00", endTime: "12:00", user: "Conferenza Internazionale" }
+      { date: "2025-09-09", startTime: "14:00", endTime: "16:00", user: "Prof. Rossi", purpose: "Conferenza Internazionale" },
+      { date: "2025-09-09", startTime: "17:00", endTime: "19:00", user: "Dr. Bianchi", purpose: "Seminario" },
+      { date: "2025-09-10", startTime: "09:00", endTime: "12:00", user: "Conferenza", purpose: "Meeting" }
     ]
   },
   { 
@@ -33,7 +34,8 @@ export const initialRoomsData = [
     booking: null, 
     blocked: null,
     bookings: [
-      { date: "2025-09-06", startTime: "14:00", endTime: "18:00", user: "Concerto di Gala" }
+      { date: "2025-09-09", startTime: "20:00", endTime: "22:00", user: "Concerto", purpose: "Concerto di Gala" },
+      { date: "2025-09-10", startTime: "14:00", endTime: "18:00", user: "Teatro", purpose: "Spettacolo" }
     ]
   },
   { 
@@ -67,8 +69,8 @@ export const initialRoomsData = [
     booking: null, 
     blocked: null,
     bookings: [
-      { date: "2025-09-04", startTime: "09:00", endTime: "11:00", user: "Prof. Bianchi" },
-      { date: "2025-09-05", startTime: "14:00", endTime: "16:00", user: "Team Marketing" }
+      { date: "2025-09-09", startTime: "09:00", endTime: "11:00", user: "Prof. Bianchi", purpose: "Lezione Matematica" },
+      { date: "2025-09-09", startTime: "15:00", endTime: "17:00", user: "Team Marketing", purpose: "Riunione" }
     ]
   },
   { 
@@ -77,10 +79,11 @@ export const initialRoomsData = [
     floor: 1, 
     capacity: 35, 
     status: "prenotata", 
-    booking: { user: "Mario Rossi", date: "2025-09-04", time: "14:00-16:00", purpose: "Riunione Team" }, 
+    booking: { user: "Mario Rossi", date: "2025-09-09", time: "08:00-10:00", purpose: "Corso Excel" }, 
     blocked: null,
     bookings: [
-      { date: "2025-09-04", startTime: "14:00", endTime: "16:00", user: "Mario Rossi" }
+      { date: "2025-09-09", startTime: "08:00", endTime: "10:00", user: "Mario Rossi", purpose: "Corso Excel" },
+      { date: "2025-09-09", startTime: "11:00", endTime: "13:00", user: "Sara Neri", purpose: "Workshop" }
     ]
   },
   { 
@@ -88,12 +91,11 @@ export const initialRoomsData = [
     name: "Aula 103", 
     floor: 1, 
     capacity: 40, 
-    status: "in-uso", 
-    booking: { user: "Anna Verde", date: "2025-09-04", time: "13:00-15:00", purpose: "Corso JavaScript" }, 
+    status: "libera", 
+    booking: null, 
     blocked: null,
     bookings: [
-      { date: "2025-09-04", startTime: "13:00", endTime: "15:00", user: "Anna Verde" },
-      { date: "2025-09-04", startTime: "16:00", endTime: "18:00", user: "Workshop React" }
+      { date: "2025-09-09", startTime: "16:00", endTime: "18:00", user: "Workshop React", purpose: "Corso Programmazione" }
     ]
   },
   { 
