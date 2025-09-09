@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import UserCard from "./UserCard";
 import UserModal from "./UserModal";
+import { getUsersList, createUser, updateUser, deleteUser } from "../../services/adminService";
 
 export default function UserManagement({ currentUser }) {
   const [users, setUsers] = useState([]);
@@ -13,45 +14,26 @@ export default function UserManagement({ currentUser }) {
 
   // Carica gli utenti al mount del componente
   useEffect(() => {
-    fetchUsers();
+    const loadUsers = async () => {
+      try {
+        const result = await getUsersList();
+        
+        if (result.success) {
+          setUsers(result.data);
+          setError(null);
+        } else {
+          setError(result.error);
+        }
+      } catch (error) {
+        setError("Errore imprevisto nel caricamento degli utenti");
+        console.error("Errore nel caricamento utenti:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUsers();
   }, []);
-
-  // Funzione per recuperare tutti gli utenti
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setError("Token mancante. Effettua il login.");
-        return;
-      }
-
-      const response = await fetch("http://localhost:8080/api/admin/users", {
-        method: "GET",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        // Il backend potrebbe restituire data.users oppure direttamente data
-        setUsers(data.users || data);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.message || "Errore nel caricamento degli utenti");
-      }
-      
-    } catch (err) {
-      console.error("Errore di rete:", err);
-      setError("Errore di connessione al server");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAddUser = () => {
     setSelectedUser(null);
@@ -74,23 +56,12 @@ export default function UserManagement({ currentUser }) {
   const confirmDeleteUser = async () => {
     if (showDeleteConfirm) {
       try {
-        const token = localStorage.getItem("token");
-        const response = await fetch(`http://localhost:8080/api/admin/delete/${showDeleteConfirm.id}`, {
-          method: "DELETE",
-          headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-        });
-
-        if (response.ok) {
-          // Rimuovi l'utente dalla lista locale
-          //setUsers(users.filter(u => u.id !== showDeleteConfirm.id));
-          console.log(`Utente ${showDeleteConfirm.username} eliminato con successo`);
-          await fetchUsers();
+        const result = await deleteUser(showDeleteConfirm.id);
+        if (result.success) {
+          setUsers(users.filter(u => u.id !== showDeleteConfirm.id));
+          setError(null);
         } else {
-          const errorData = await response.json();
-          setError(errorData.message || "Errore nell'eliminazione dell'utente");
+          setError(result.error);
         }
       } catch (err) {
         console.error("Errore nell'eliminazione:", err);
@@ -103,68 +74,35 @@ export default function UserManagement({ currentUser }) {
 
   const handleSaveUser = async (userData, editing) => {
     try {
-      const token = localStorage.getItem("token");
       console.log("Tentativo di salvataggio utente:", { userData, editing });
       
+      let result;
       if (editing) {
         // Aggiorna utente esistente
         console.log("Aggiornamento utente con ID:", userData.id);
-        const response = await fetch(`http://localhost:8080/api/admin/users/${userData.id}`, {
-          method: "PUT",
-          headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify(userData),
-        });
-
-        console.log("Risposta PUT:", response.status);
-        
-        if (response.ok) {
-          const updatedUser = await response.json();
-          console.log("Utente aggiornato:", updatedUser);
-          setUsers(users.map(u => u.id === userData.id ? (updatedUser.user || updatedUser) : u));
-          console.log("Utente aggiornato con successo");
-          // Ricarica la lista utenti per essere sicuri dei dati aggiornati
-          await fetchUsers();
-        } else {
-          const errorData = await response.json();
-          console.error("Errore aggiornamento:", errorData);
-          setError(errorData.message || "Errore nell'aggiornamento dell'utente");
-          return; // Non chiudere il modal se c'è errore
-        }
+        result = await updateUser(userData.id, userData);
       } else {
         // Crea nuovo utente
         console.log("Creazione nuovo utente:", userData);
-        const response = await fetch("http://localhost:8080/api/admin/register", {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify(userData),
-        });
-
-        console.log("Risposta POST:", response.status);
-        
-        if (response.ok) {
-          const newUser = await response.json();
-          console.log("Nuovo utente creato:", newUser);
-          setUsers([...users, newUser.user || newUser]);
-          console.log("Utente creato con successo");
-          // Ricarica la lista utenti per essere sicuri dei dati aggiornati
-          await fetchUsers();
-        } else {
-          const errorData = await response.json();
-          console.error("Errore creazione:", errorData);
-          setError(errorData.message || "Errore nella creazione dell'utente");
-          return; // Non chiudere il modal se c'è errore
-        }
+        result = await createUser(userData);
       }
-      
-      setShowModal(false);
-      setSelectedUser(null);
-      setIsEditing(false);
+
+      if (result.success) {
+        console.log(editing ? "Utente aggiornato con successo" : "Utente creato con successo");
+        // Ricarica la lista utenti per avere i dati aggiornati
+        const usersList = await getUsersList();
+        if (usersList.success) {
+          setUsers(usersList.data);
+        }
+        setError(null);
+        setShowModal(false);
+        setSelectedUser(null);
+        setIsEditing(false);
+      } else {
+        console.error("Errore nell'operazione:", result.error);
+        setError(result.error);
+        // Non chiudere il modal se c'è errore
+      }
     } catch (err) {
       console.error("Errore nell'operazione:", err);
       setError("Errore di connessione durante l'operazione");
@@ -203,7 +141,7 @@ export default function UserManagement({ currentUser }) {
           <h3 className="text-lg font-semibold text-red-800 mb-2">Errore di Caricamento</h3>
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={fetchUsers}
+            onClick={getUsersList}
             className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
           >
             Riprova

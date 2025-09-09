@@ -1,46 +1,39 @@
 import { useState, useEffect } from "react";
 import UserManagement from "./UserManagement";
 import RoomManagement from "./RoomManagement";
+import { getCurrentUser } from "../../services/authService";
 
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState("users");
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  console.log("Active Tab:", activeTab);
 
+  // Carica i dati dell'utente corrente
   useEffect(() => {
-    const fetchUser = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setError("Token mancante. Effettua il login.");
-        setLoading(false);
-        return;
-      }
-
+    const loadCurrentUser = async () => {
       try {
-        const response = await fetch("http://localhost:8080/api/me", {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setCurrentUser(data.user || data);
+        const result = await getCurrentUser();
+        
+        if (result === null) {
+          // Nessun token, utente non loggato
+          setCurrentUser(null);
+        } else if (result.success) {
+          // Login valido
+          setCurrentUser(result.data);
         } else {
-          setError("Accesso negato o token scaduto.");
+          // Errore nel caricamento
+          console.error("Errore caricamento utente:", result.error);
+          setCurrentUser(null);
         }
-      } catch {
-        setError("Errore di rete. Riprova.");
+      } catch (err) {
+        console.error("Errore imprevisto caricamento utente:", err);
+        setCurrentUser(null);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUser();
+    loadCurrentUser();
   }, []);
 
   // Mostra loading durante il caricamento
@@ -48,20 +41,8 @@ export default function AdminPanel() {
     return <div className="text-center py-8 text-gray-500">Caricamento dati utente...</div>;
   }
 
-  // Mostra errore se c'è un problema
-  if (error) {
-    return (
-      <div className="text-center py-8">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">
-          <h3 className="text-lg font-semibold text-yellow-800 mb-2">Errore</h3>
-          <p className="text-yellow-600">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Controlla se l'utente è admin
-  if (!currentUser || currentUser.ruolo !== "admin") {
+  // Controlla se l'utente è admin (solo se è stato caricato)
+  if (currentUser && currentUser.ruolo !== "admin") {
     return (
       <div className="text-center py-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">

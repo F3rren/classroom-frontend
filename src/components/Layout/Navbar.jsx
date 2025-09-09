@@ -8,8 +8,20 @@ export default function Navbar({ currentPage }) {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const u = await getCurrentUser();
-      setUser(u);
+      const result = await getCurrentUser();
+      
+      if (result === null) {
+        // Nessun token, utente non loggato
+        console.log("Nessun token trovato");
+        setUser(null);
+      } else if (result.success) {
+        // Login valido, estrai i dati utente
+        setUser(result.data);
+      } else {
+        // Errore nel caricamento
+        console.error("Errore caricamento utente:", result.error);
+        setUser(null);
+      }
     };
     fetchUser();
   }, []);
@@ -50,7 +62,7 @@ export default function Navbar({ currentPage }) {
       </div>
       <div className="flex items-center space-x-4">
         <span className="font-semibold">
-          {user ? `${user.nome} (${user.ruolo === "admin" ? "Admin" : "Utente"})` : ""}
+          {user ? `${user.nome || user.name || user.username || 'Utente'} (${user.ruolo === "admin" ? "Admin" : "Utente"})` : ""}
         </span>
         <button
           className="bg-white text-blue-700 px-3 py-1 rounded hover:bg-blue-100 transition font-semibold"

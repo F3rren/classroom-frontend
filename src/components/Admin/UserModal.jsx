@@ -53,6 +53,7 @@ export default function UserModal({ user, isEditing, onClose, onSave }) {
     // Per modifiche, includi l'ID
     if (isEditing && user?.id) {
       userData.id = user.id;
+      userData.password = user.password; // Mantieni la password esistente se non modificata
       userData.dataRegistrazione = user.dataRegistrazione;
       userData.ultimoAccesso = user.ultimoAccesso;
     }
