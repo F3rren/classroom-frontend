@@ -29,13 +29,26 @@ export default function Navbar({ currentPage }) {
   return (
     <nav className="bg-blue-700 text-white px-6 py-4 shadow flex items-center justify-between">
       <div className="flex items-center space-x-8">
-        <div className="text-2xl font-bold tracking-wide">Prenotazione Aule</div>
+        <div className="text-2xl font-bold tracking-wide">Sistema di Gestione</div>
         {/* Menu di navigazione */}
         <div className="hidden md:flex space-x-4">
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/dashboard/user')}
             className={`px-3 py-2 rounded-md text-sm font-medium transition ${
-              currentPage === 'rooms' 
+              currentPage === 'user' 
+                ? 'bg-blue-800 text-white' 
+                : 'text-blue-100 hover:bg-blue-600 hover:text-white'
+            }`}
+          >
+            <span className="font-semibold">
+              Dashboard
+            </span>
+          </button>
+          
+          <button
+            onClick={() => navigate('/bookings')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition ${
+              currentPage === 'bookings' 
                 ? 'bg-blue-800 text-white' 
                 : 'text-blue-100 hover:bg-blue-600 hover:text-white'
             }`}
@@ -44,6 +57,7 @@ export default function Navbar({ currentPage }) {
               Prenotazioni
             </span>
           </button>
+          
           {user && user.ruolo === 'admin' && (
             <button
               onClick={() => navigate('/dashboard/adminpanel')}

@@ -1,13 +1,22 @@
 import { useState, useEffect } from "react";
-import { initialRoomsData } from "../../data/roomsData";
-import { getRoomList } from "../../services/roomService";
 import { getRoomsWithBookings } from "../../services/adminService";
+import { useRooms } from "../../hooks/useRooms";
 import RoomCard from "./RoomCard";
 import RoomModal from "./RoomModal";
 import FloorHeader from "./FloorHeader";
 import SearchAndFilters from "./SearchAndFilters";
+import ApiStatusIndicator from "../Common/ApiStatusIndicator";
+import ApiDebugger from "../Common/ApiDebugger";
+import ProxyTest from "../test/ProxyTest";
 
 export default function RoomGrid({ user }) {
+  // Usa il hook personalizzato per le stanze
+  const { 
+    rooms: allRooms, 
+    loading: roomsLoading, 
+    error: roomsError, 
+    refreshRooms
+  } = useRooms();
   
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,69 +29,66 @@ export default function RoomGrid({ user }) {
   const [selectedFloor, setSelectedFloor] = useState("all");
   const [availability, setAvailability] = useState("all");
 
-  // Carica le stanze con possibili prenotazioni
+  // Effetto per gestire i dati delle stanze dal hook
   useEffect(() => {
-    const loadRooms = async () => {
+    if (roomsLoading) {
       setLoading(true);
-      setError(null);
-      
-      try {
-        console.log("🔄 Caricamento stanze per utenti...");
-        
-        // Per utenti admin, prova prima con prenotazioni
-        if (user?.role === "admin" || user?.ruolo === "admin") {
+      return;
+    }
+
+    if (roomsError) {
+      setError(roomsError);
+      setRooms([]);
+      setHasBookingSupport(false);
+      setLoading(false);
+      return;
+    }
+
+    // Se l'utente è admin, prova a ottenere dati più dettagliati
+    const loadRoomsForUser = async () => {
+      if (user?.role === "admin" || user?.ruolo === "admin") {
+        try {
+          console.log("🔄 Caricamento dati admin con prenotazioni...");
           const result = await getRoomsWithBookings();
           
-          if (result.success) {
-            setRooms(result.data || []);
+          if (result.success && result.data?.length > 0) {
+            setRooms(result.data);
             setHasBookingSupport(result.hasBookingSupport || false);
-            
-            console.log("✅ Stanze admin caricate:", {
-              count: result.data?.length || 0,
+            console.log("✅ Dati admin caricati:", {
+              count: result.data.length,
               hasBookingSupport: result.hasBookingSupport
             });
           } else {
-            // Fallback per admin
-            console.warn("⚠️ Fallback a getRoomList per admin");
-            const basicResult = await getRoomList();
-            if (basicResult.success) {
-              setRooms(basicResult.data || []);
-              setHasBookingSupport(false);
-            } else {
-              throw new Error(basicResult.error);
-            }
+            // Fallback ai dati base dall'hook
+            setRooms(allRooms);
+            setHasBookingSupport(allRooms.some(room => 
+              room.bookings && room.bookings.length > 0
+            ));
           }
-        } else {
-          // Per utenti normali, usa getRoomList
-          const result = await getRoomList();
-          
-          if (result.success) {
-            setRooms(result.data || []);
-            setHasBookingSupport(false);
-            
-            console.log("✅ Stanze utente caricate:", {
-              count: result.data?.length || 0
-            });
-          } else {
-            throw new Error(result.error);
-          }
+        } catch (err) {
+          console.warn("⚠️ Errore caricamento dati admin, uso dati base:", err);
+          setRooms(allRooms);
+          setHasBookingSupport(false);
         }
-        
-      } catch (err) {
-        console.error("❌ Errore caricamento stanze:", err);
-        setError(err.message || "Errore di connessione al server");
-        setRooms(initialRoomsData); // Fallback ai dati mock
-        setHasBookingSupport(true); // I dati mock includono le prenotazioni!
-      } finally {
-        setLoading(false);
+      } else {
+        // Per utenti normali, usa i dati dal hook
+        setRooms(allRooms);
+        setHasBookingSupport(allRooms.some(room => 
+          room.bookings && room.bookings.length > 0
+        ));
       }
+      
+      setError(null);
+      setLoading(false);
     };
 
-    loadRooms();
-  }, [user?.role, user?.ruolo]);
+    loadRoomsForUser();
+  }, [allRooms, roomsLoading, roomsError, user?.role, user?.ruolo]);
 
-  // Carica gli utenti per il dropdown
+  // Carica gli utenti per il dropdown (solo per admin)
   useEffect(() => {
+    if (user?.role !== "admin" && user?.ruolo !== "admin") return;
+    
     const fetchUsers = async () => {
       try {
         const token = localStorage.getItem("token");
@@ -106,36 +112,11 @@ export default function RoomGrid({ user }) {
     };
 
     fetchUsers();
-  }, []);
+  }, [user?.role, user?.ruolo]);
 
   // Funzione per ricaricare le stanze
-  const refreshRooms = async () => {
-    setLoading(true);
-    try {
-      let result;
-      if (user?.role === "admin" || user?.ruolo === "admin") {
-        result = await getRoomsWithBookings();
-        if (!result.success) {
-          result = await getRoomList();
-        }
-      } else {
-        result = await getRoomList();
-      }
-      
-      if (result.success) {
-        setRooms(result.data || []);
-        setHasBookingSupport(result.hasBookingSupport || false);
-        setError(null);
-      } else {
-        setError(result.error);
-      }
-    } catch {
-      setError("Errore di connessione al server");
-      setRooms(initialRoomsData); // Fallback ai dati mock
-      setHasBookingSupport(true); // I dati mock includono le prenotazioni!
-    } finally {
-      setLoading(false);
-    }
+  const handleRefreshRooms = async () => {
+    refreshRooms(); // Ricarica tramite hook
   };
 
 
@@ -223,27 +204,37 @@ export default function RoomGrid({ user }) {
   return (
     <div className="w-full space-y-4">
       
+      {/* Debug temporaneo - rimuovere in produzione */}
+      {import.meta.env.DEV && (
+        <>
+          <ProxyTest />
+          <ApiDebugger />
+        </>
+      )}
+      
       {/* Stato del sistema e errori */}
       {error && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-start">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
               </svg>
             </div>
             <div className="ml-3 flex-1">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-sm text-yellow-700">
-                    <span className="font-medium">Attenzione:</span> {error}
-                    {!hasBookingSupport && " - Dati base disponibili."}
+                  <p className="text-sm text-red-700">
+                    <span className="font-medium">Errore di connessione:</span> {error}
+                    <span className="block mt-1 text-xs">
+                      Verifica che il backend sia avviato su <code className="bg-red-200 px-1 rounded">localhost:8080</code> e che l'endpoint <code className="bg-red-200 px-1 rounded">/api/rooms/detailed</code> sia implementato.
+                    </span>
                   </p>
                 </div>
                 <button
-                  onClick={refreshRooms}
+                  onClick={handleRefreshRooms}
                   disabled={loading}
-                  className="text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50"
+                  className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50"
                 >
                   🔄 Riprova
                 </button>
@@ -257,9 +248,10 @@ export default function RoomGrid({ user }) {
       <div className="flex justify-between items-center">
         <div className="flex items-center space-x-4">
           <h1 className="text-2xl font-bold text-gray-900">Stanze Disponibili</h1>
-          {error && hasBookingSupport ? (
-            <div className="inline-flex items-center px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-              🟪 Dati dimostrativi
+          <ApiStatusIndicator />
+          {error ? (
+            <div className="inline-flex items-center px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+              � Errore Database
             </div>
           ) : hasBookingSupport ? (
             <div className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
@@ -316,16 +308,33 @@ export default function RoomGrid({ user }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Nessuna stanza trovata</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {error ? 'Impossibile caricare le stanze' : 'Nessuna stanza trovata'}
+            </h3>
             <p className="text-gray-600">
-              Prova a modificare i filtri di ricerca per vedere più risultati.
+              {error 
+                ? 'Verifica la connessione al database e riprova.' 
+                : rooms.length === 0 
+                ? 'Non ci sono stanze nel database. Aggiungile tramite il pannello admin.'
+                : 'Prova a modificare i filtri di ricerca per vedere più risultati.'
+              }
             </p>
-            <button
-              onClick={() => { setSelectedCapacity("all"); setSelectedFloor("all"); setAvailability("all"); }}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
-              Mostra tutte le stanze
-            </button>
+            {!error && rooms.length > 0 && (
+              <button
+                onClick={() => { setSelectedCapacity("all"); setSelectedFloor("all"); setAvailability("all"); }}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Mostra tutte le stanze
+              </button>
+            )}
+            {error && (
+              <button
+                onClick={handleRefreshRooms}
+                className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              >
+                🔄 Riprova connessione
+              </button>
+            )}
           </div>
         ) : (
           Object.entries(roomsByFloor).map(([floor, roomsOnFloor]) => (

@@ -1,23 +1,47 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { handleLogin as authLogin } from "../../services/authService";
+import { handleLogin as authLogin, getCurrentUser } from "../../services/authService";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   
   const handleLogin = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError(null);
     
-    const loginResult = await authLogin(email, password);
-    
-    if (loginResult.success) {
-      setError(null);
-      navigate('/dashboard/');
-    } else {
-      setError(loginResult.error);
+    try {
+      const loginResult = await authLogin(email, password);
+      
+      if (loginResult.success) {
+        // Dopo il login, ottieni i dati dell'utente per il redirect appropriato
+        const userResult = await getCurrentUser();
+        
+        if (userResult && userResult.success) {
+          const user = userResult.data;
+          
+          // Redirect basato sul ruolo
+          if (user.ruolo === 'admin') {
+            navigate('/dashboard/adminpanel');
+          } else {
+            navigate('/dashboard/user');
+          }
+        } else {
+          // Se non riesco a ottenere i dati utente, vai alla home
+          navigate('/');
+        }
+      } else {
+        setError(loginResult.error);
+      }
+    } catch (err) {
+      console.error('Errore durante il login:', err);
+      setError('Errore durante il login. Riprova.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -35,7 +59,7 @@ export default function Login() {
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
             Benvenuto
           </h2>
-          <p className="text-gray-600">Sistema di Prenotazione Aule</p>
+          <p className="text-gray-600">Sistema di Gestione</p>
         </div>
         
         {error && (
@@ -74,9 +98,21 @@ export default function Login() {
           
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transform hover:scale-105 transition duration-200 shadow-lg"
+            disabled={loading}
+            className={`w-full py-3 rounded-lg font-semibold transform transition duration-200 shadow-lg ${
+              loading 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 hover:scale-105'
+            }`}
           >
-            Accedi
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                Accesso in corso...
+              </div>
+            ) : (
+              'Accedi'
+            )}
           </button>
         </form>
       </div>

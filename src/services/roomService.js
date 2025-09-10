@@ -8,7 +8,7 @@ export async function getRoomList() {
         };
       }
 
-      const response = await fetch("http://localhost:8080/api/rooms", {
+      const response = await fetch("/api/rooms", {
         method: "GET",
         headers: { 
           "Content-Type": "application/json",
@@ -27,7 +27,7 @@ export async function getRoomList() {
         const errorData = await response.json();
         return {
           success: false,
-          error: errorData.message || "Errore nel caricamento degli utenti",
+          error: errorData.message || "Errore nel caricamento delle stanze",
           data: null
         };
       }
@@ -37,6 +37,149 @@ export async function getRoomList() {
       return {
         success: false,
         error: "Errore di connessione al server",
+        data: null
+      };
+    }
+}
+
+// Funzione per ottenere tutte le stanze con dettagli completi
+export async function getDetailedRooms() {
+    try {      
+      if (!localStorage.getItem("token")) {
+        return {
+            success: false,
+            error: "Token mancante. Effettua il login.",
+            data: null
+        };
+      }
+
+      console.log("🔄 Tentativo di connessione a /api/rooms/detailed...");
+      
+      const response = await fetch("/api/rooms/detailed", {
+        method: "GET",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
+      });
+      
+      console.log("📡 Risposta ricevuta da /api/rooms/detailed:", {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get('content-type'),
+        ok: response.ok
+      });
+      
+      if (response.ok) {
+        // Controlla se la risposta ha contenuto
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          console.warn("⚠️ Risposta non è JSON, probabilmente endpoint non implementato");
+          throw new Error("Endpoint /api/rooms/detailed non implementato - content-type: " + contentType);
+        }
+        
+        const text = await response.text();
+        if (!text || text.trim() === '') {
+          console.warn("⚠️ Risposta vuota dall'endpoint detailed");
+          throw new Error("Risposta vuota dall'endpoint detailed");
+        }
+        
+        console.log("📄 Contenuto grezzo ricevuto:", text.substring(0, 500) + (text.length > 500 ? "..." : ""));
+        
+        try {
+          const data = JSON.parse(text);
+          console.log("✅ Dati stanze dettagliati parsati:", {
+            type: typeof data,
+            isArray: Array.isArray(data),
+            hasRoomsProperty: 'rooms' in data,
+            dataKeys: Object.keys(data || {}),
+            firstItemKeys: Array.isArray(data) && data[0] ? Object.keys(data[0]) : 
+                          data.rooms && data.rooms[0] ? Object.keys(data.rooms[0]) : 'N/A'
+          });
+          
+          // Normalizza i dati ricevuti
+          const rawRooms = data.rooms || data || [];
+          console.log(`📊 Trovate ${rawRooms.length} stanze da processare`);
+          
+          const normalizedRooms = rawRooms.map((room, index) => {
+            console.log(`🔧 Normalizzando stanza ${index + 1}:`, {
+              id: room.id,
+              name: room.name,
+              hasBookings: !!(room.bookings && room.bookings.length > 0),
+              bookingsCount: room.bookings ? room.bookings.length : 0
+            });
+            return normalizeRoomData(room);
+          });
+          
+          console.log(`✅ ${normalizedRooms.length} stanze normalizzate con successo`);
+          
+          return {
+            success: true,
+            error: null,
+            data: normalizedRooms
+          };
+        } catch (parseError) {
+          console.error("❌ Errore parsing JSON:", parseError);
+          console.log("📄 Contenuto che ha causato l'errore:", text);
+          throw new Error("Formato dati non valido dall'endpoint detailed: " + parseError.message);
+        }
+      } else {
+        console.warn(`⚠️ Endpoint detailed non disponibile, status: ${response.status} ${response.statusText}`);
+        
+        // Se l'endpoint detailed non esiste (404), prova con l'endpoint base
+        if (response.status === 404) {
+          console.log("🔄 Fallback a /api/rooms...");
+          const fallbackResult = await getRoomList();
+          
+          if (fallbackResult.success) {
+            console.log("✅ Fallback riuscito, normalizzando dati base...");
+            return {
+              success: true,
+              error: "Endpoint /api/rooms/detailed non disponibile, utilizzando dati base da /api/rooms",
+              data: fallbackResult.data.map(room => normalizeRoomData(room))
+            };
+          } else {
+            throw new Error("Anche l'endpoint di fallback /api/rooms ha fallito: " + fallbackResult.error);
+          }
+        }
+        
+        // Prova a leggere l'errore se possibile
+        let errorMessage = `Errore HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch {
+          // Se non riesce a parsare l'errore, usa il messaggio di default
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+    } catch (err) {
+      console.error("❌ Errore in getDetailedRooms:", err);
+      
+      // Se c'è un errore di rete, prova il fallback all'endpoint base
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        console.log("🔄 Errore di rete, tentativo di fallback a /api/rooms...");
+        try {
+          const fallbackResult = await getRoomList();
+          
+          if (fallbackResult.success) {
+            console.log("✅ Fallback di rete riuscito");
+            return {
+              success: true,
+              error: "Server non raggiungibile su /api/rooms/detailed, utilizzando dati base",
+              data: fallbackResult.data.map(room => normalizeRoomData(room))
+            };
+          }
+        } catch (fallbackError) {
+          console.error("❌ Anche il fallback di rete è fallito:", fallbackError);
+        }
+      }
+      
+      return {
+        success: false,
+        error: err.message || "Errore di connessione al server",
         data: null
       };
     }
@@ -54,7 +197,7 @@ export async function getRoomDetails(roomId) {
       }
 
       // Prima prova con l'endpoint details
-      const detailsResponse = await fetch(`http://localhost:8080/api/rooms/${roomId}/details`, {
+      const detailsResponse = await fetch(`/api/rooms/${roomId}/details`, {
         method: "GET",
         headers: { 
           "Content-Type": "application/json",
@@ -83,7 +226,7 @@ export async function getRoomDetails(roomId) {
       // Se l'endpoint details fallisce, prova con l'endpoint base
       console.warn(`Endpoint details fallito per stanza ${roomId}, provo con endpoint base`);
       
-      const baseResponse = await fetch(`http://localhost:8080/api/rooms/${roomId}`, {
+      const baseResponse = await fetch(`/api/rooms/${roomId}`, {
         method: "GET",
         headers: { 
           "Content-Type": "application/json",

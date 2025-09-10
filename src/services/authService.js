@@ -10,7 +10,7 @@ export async function handleLogin(email, password) {
     }
 
     try {
-      const response = await fetch("http://localhost:8080/api/auth/login", {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -88,7 +88,7 @@ export async function getCurrentUser(){
       }
       
       try {
-        const response = await fetch("http://localhost:8080/api/me", {
+        const response = await fetch("/api/me", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -201,9 +201,7 @@ export const handleLogout = (reason = null) => {
         console.log("Logout eseguito per:", reason);
       }
       
-      // Redirect con messaggio opzionale
-      const logoutUrl = reason ? `/login?message=${encodeURIComponent(reason)}` : "/login";
-      window.location.href = logoutUrl;
+      window.location.href = "/login";
       
     } catch (error) {
       console.error("Errore durante il logout:", error);
