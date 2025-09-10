@@ -209,3 +209,34 @@ export const handleLogout = (reason = null) => {
       window.location.href = "/login";
     }
   };
+
+// Funzione di utilità per verificare se l'utente corrente è admin
+export const isCurrentUserAdmin = async () => {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      console.log("🔐 Nessun utente trovato");
+      return false;
+    }
+    
+    console.log("🔐 Struttura completa utente:", user);
+    
+    // Estraiamo i dati utente dalla risposta
+    const userData = user.data || user;
+    console.log("🔐 Dati utente estratti:", userData);
+    
+    // Dai test sappiamo che il ruolo è in userData.ruolo come stringa "admin"
+    const isAdmin = userData.ruolo === "admin" || 
+                   userData.ruolo === "ADMIN" || 
+                   userData.role === "admin" || 
+                   userData.role === "ADMIN";
+    
+    console.log("🔐 Controllo ruolo:", userData.ruolo || userData.role);
+    console.log("🔐 Utente è admin:", isAdmin);
+    
+    return isAdmin;
+  } catch (error) {
+    console.error("🔐 Errore verifica admin:", error);
+    return false;
+  }
+};

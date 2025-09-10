@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import UserManagement from "./UserManagement";
+import RoomManagement from "./RoomManagement";
 import { getCurrentUser } from "../../services/authService";
 
 export default function AdminPanel() {
@@ -54,6 +55,7 @@ export default function AdminPanel() {
 
   const tabs = [
     { id: "users", label: "Gestione Utenti", icon: "👥" },
+    { id: "rooms", label: "Gestione Stanze", icon: "🏠" },
   ];
 
   return (
@@ -81,6 +83,7 @@ export default function AdminPanel() {
       {/* Tab Content */}
       <div className="mt-6">
         {activeTab === "users" && <UserManagement currentUser={currentUser} />}
+        {activeTab === "rooms" && <RoomManagement />}
       </div>
     </div>
   );

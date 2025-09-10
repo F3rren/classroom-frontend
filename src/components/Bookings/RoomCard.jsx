@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toggleRoomBlock } from '../../services/bookingService';
 
 const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
   const [isBlocking, setIsBlocking] = useState(false);
-  const [isBlocked, setIsBlocked] = useState(room.blocked !== null);
+  const [isBlocked, setIsBlocked] = useState(room.isBlocked || room.blocked !== null);
+
+  // Aggiorna lo stato quando il room prop cambia
+  useEffect(() => {
+    setIsBlocked(room.isBlocked || room.blocked !== null);
+  }, [room.isBlocked, room.blocked]);
 
   const handleToggleBlock = async (e) => {
     e.stopPropagation();
@@ -24,29 +29,58 @@ const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
   };
 
   const getStatusColor = () => {
-    if (room.blocked !== null) return 'bg-red-100 text-red-800';
-    if (room.status === 'prenotata') return 'bg-yellow-100 text-yellow-800';
-    return 'bg-green-100 text-green-800';
+    if (isBlocked || room.isBlocked || room.blocked !== null) {
+      return 'bg-red-500 text-white border-red-500';
+    }
+    if (room.status === 'prenotata') {
+      return 'bg-yellow-500 text-white border-yellow-500';
+    }
+    return 'bg-green-500 text-white border-green-500';
   };
 
   const getStatusText = () => {
-    if (room.blocked !== null) return 'Bloccata';
-    if (room.status === 'prenotata') return 'Prenotata';
-    return 'Libera';
+    if (isBlocked || room.isBlocked || room.blocked !== null) {
+      return 'BLOCCATA';
+    }
+    if (room.status === 'prenotata') {
+      return 'PRENOTATA';
+    }
+    return 'LIBERA';
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden">
+    <div className={`relative bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden ${
+      isBlocked || room.isBlocked ? 
+        'ring-2 ring-red-200 bg-red-50' : 
+        'hover:ring-2 hover:ring-blue-100'
+    }`}>
+      {/* Barra colorata in alto per stanze bloccate */}
+      {(isBlocked || room.isBlocked) && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-red-500"></div>
+      )}
+      
       <div className="p-6">
         {/* Header con nome e stato */}
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {room.name || `Stanza ${room.id}`}
             </h3>
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor()}`}>
-              {getStatusText()}
-            </span>
+            
+            {/* Widget di stato migliorato */}
+            <div className="flex items-center space-x-2">
+              <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-semibold border-2 ${getStatusColor()} shadow-sm`}>
+                
+                {getStatusText()}
+              </div>
+              
+              {/* Indicatore motivazione blocco */}
+              {(isBlocked || room.isBlocked) && (room.blockReason || room.blocked) && (
+                <div className="bg-red-50 text-red-700 px-2 py-1 rounded text-xs border border-red-200">
+                  {room.blockReason || room.blocked}
+                </div>
+              )}
+            </div>
           </div>
           
           {isAdmin && (

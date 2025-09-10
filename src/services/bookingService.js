@@ -1,5 +1,47 @@
 // ====== SERVIZI STANZE ======
 
+// Cache locale per le stanze bloccate (workaround per backend che non restituisce i dati)
+let blockedRoomsCache = new Map(); // Map<roomId, {isBlocked: boolean, blockReason: string}>
+
+// Funzione per aggiornare la cache locale
+function updateBlockedRoomCache(roomId, isBlocked, blockReason = null) {
+  if (isBlocked) {
+    blockedRoomsCache.set(parseInt(roomId), {
+      isBlocked: true,
+      blockReason: blockReason
+    });
+    console.log('🔒 Cache: stanza bloccata aggiunta:', roomId, blockReason);
+  } else {
+    blockedRoomsCache.delete(parseInt(roomId));
+    console.log('🔒 Cache: stanza sbloccata rimossa:', roomId);
+  }
+  
+  // Salva in localStorage per persistenza
+  try {
+    localStorage.setItem('blockedRoomsCache', JSON.stringify(Array.from(blockedRoomsCache.entries())));
+  } catch (e) {
+    console.warn('⚠️ Impossibile salvare cache in localStorage');
+  }
+}
+
+// Funzione per caricare la cache da localStorage
+function loadBlockedRoomCache() {
+  try {
+    const cached = localStorage.getItem('blockedRoomsCache');
+    if (cached) {
+      const entries = JSON.parse(cached);
+      blockedRoomsCache = new Map(entries);
+      console.log('🔒 Cache caricata da localStorage:', blockedRoomsCache.size, 'stanze');
+    }
+  } catch (e) {
+    console.warn('⚠️ Errore caricamento cache da localStorage');
+    blockedRoomsCache = new Map();
+  }
+}
+
+// Carica la cache all'avvio
+loadBlockedRoomCache();
+
 // Funzione per recuperare tutte le stanze
 export async function getAllRooms() {
   try {
@@ -37,6 +79,25 @@ export async function getAllRooms() {
         roomsArray = [];
       }
       
+      // Arricchisci le stanze con i dati di blocco dalla cache
+      roomsArray = roomsArray.map(room => {
+        const cached = blockedRoomsCache.get(room.id);
+        if (cached) {
+          return {
+            ...room,
+            isBlocked: cached.isBlocked,
+            blockReason: cached.blockReason
+          };
+        }
+        return {
+          ...room,
+          isBlocked: false,
+          blockReason: null
+        };
+      });
+      
+      console.log("🔒 Stanze getAllRooms arricchite con cache:", roomsArray.filter(r => r.isBlocked));
+      
       return {
         success: true,
         error: null,
@@ -47,6 +108,86 @@ export async function getAllRooms() {
       return {
         success: false,
         error: errorData.message || "Errore nel caricamento delle stanze",
+        data: null
+      };
+    }
+    
+  } catch (err) {
+    console.error("Errore di rete:", err);
+    return {
+      success: false,
+      error: "Errore di connessione al server",
+      data: null
+    };
+  }
+}
+
+// Funzione per recuperare tutte le stanze per admin (include stanze bloccate)
+export async function getAllRoomsAdmin() {
+  try {
+    if (!localStorage.getItem("token")) {
+      return {
+        success: false,
+        error: "Token mancante. Effettua il login.",
+        data: null
+      };
+    }
+
+    const response = await fetch("/api/admin/rooms", {
+      method: "GET",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("🏠 Risposta getAllRoomsAdmin:", data);
+      
+      // Gestisci diversi formati di risposta
+      let roomsArray = [];
+      
+      if (Array.isArray(data)) {
+        roomsArray = data;
+      } else if (data.rooms && Array.isArray(data.rooms)) {
+        roomsArray = data.rooms;
+      } else if (data.aule && Array.isArray(data.aule)) {
+        roomsArray = data.aule;
+      } else {
+        console.warn("⚠️ Formato risposta admin rooms inaspettato:", data);
+        roomsArray = [];
+      }
+      
+      // Arricchisci le stanze con i dati di blocco dalla cache
+      roomsArray = roomsArray.map(room => {
+        const cached = blockedRoomsCache.get(room.id);
+        if (cached) {
+          return {
+            ...room,
+            isBlocked: cached.isBlocked,
+            blockReason: cached.blockReason
+          };
+        }
+        return {
+          ...room,
+          isBlocked: false,
+          blockReason: null
+        };
+      });
+      
+      console.log("🔒 Stanze arricchite con cache blocco:", roomsArray.filter(r => r.isBlocked));
+      
+      return {
+        success: true,
+        error: null,
+        data: roomsArray
+      };
+    } else {
+      const errorData = await response.json();
+      return {
+        success: false,
+        error: errorData.message || "Errore nel caricamento delle stanze admin",
         data: null
       };
     }
@@ -82,10 +223,35 @@ export async function getRoomsDetailed() {
 
     if (response.ok) {
       const data = await response.json();
+      console.log("🏠 Risposta getRoomsDetailed:", data);
+      
+      let roomsArray = data.rooms || data;
+      
+      // Arricchisci le stanze con i dati di blocco dalla cache
+      if (Array.isArray(roomsArray)) {
+        roomsArray = roomsArray.map(room => {
+          const cached = blockedRoomsCache.get(room.id);
+          if (cached) {
+            return {
+              ...room,
+              isBlocked: cached.isBlocked,
+              blockReason: cached.blockReason
+            };
+          }
+          return {
+            ...room,
+            isBlocked: false,
+            blockReason: null
+          };
+        });
+        
+        console.log("🔒 Stanze detailed arricchite con cache:", roomsArray.filter(r => r.isBlocked));
+      }
+      
       return {
         success: true,
         error: null,
-        data: data.rooms || data
+        data: roomsArray
       };
     } else {
       const errorData = await response.json();
@@ -754,10 +920,16 @@ export async function updateRoom(roomId, roomData) {
   }
 }
 
-// Funzione per bloccare/sbloccare una stanza (solo admin)
-export async function toggleRoomBlock(roomId, isBlocked) {
+// Funzione per bloccare/sbloccare una stanza (solo admin) - Versione aggiornata
+export async function toggleRoomBlock(roomId, blockData) {
   try {
-    if (!localStorage.getItem("token")) {
+    const token = localStorage.getItem("token");
+    
+    console.log('🔒 toggleRoomBlock - Versione aggiornata:');
+    console.log('  - Room ID:', roomId);
+    console.log('  - Block Data:', blockData);
+    
+    if (!token) {
       return {
         success: false,
         error: "Token mancante. Effettua il login.",
@@ -765,35 +937,203 @@ export async function toggleRoomBlock(roomId, isBlocked) {
       };
     }
 
-    const response = await fetch(`/api/admin/rooms/${roomId}/block`, {
+    // Strategia: usa l'endpoint di update della stanza
+    // Prima ottieni i dati correnti di tutte le stanze
+    const roomsResponse = await fetch(`/api/admin/rooms`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      }
+    });
+    
+    if (!roomsResponse.ok) {
+      console.error('🔒 Errore nel recupero stanze:', roomsResponse.status);
+      return {
+        success: false,
+        error: "Impossibile ottenere i dati delle stanze",
+        data: null
+      };
+    }
+    
+    const roomsText = await roomsResponse.text();
+    console.log('🔒 Risposta raw da /api/admin/rooms:', roomsText);
+    
+    let rooms;
+    try {
+      rooms = JSON.parse(roomsText);
+      console.log('🔒 Dati parsati:', rooms);
+      console.log('🔒 Tipo di rooms:', typeof rooms);
+      console.log('🔒 È array?', Array.isArray(rooms));
+      
+      // Se rooms è un oggetto con una proprietà che contiene l'array
+      if (typeof rooms === 'object' && !Array.isArray(rooms)) {
+        console.log('🔒 Proprietà di rooms:', Object.keys(rooms));
+        
+        // Controlla se c'è una proprietà che contiene l'array
+        for (const [key, value] of Object.entries(rooms)) {
+          console.log(`🔒 ${key}:`, Array.isArray(value) ? `Array di ${value.length} elementi` : typeof value);
+          if (Array.isArray(value)) {
+            console.log('🔒 Trovato array in proprietà:', key);
+            rooms = value; // Usa questo array
+            break;
+          }
+        }
+      }
+      
+    } catch (e) {
+      console.error('🔒 Errore parsing stanze:', e);
+      return {
+        success: false,
+        error: "Errore nel parsing dei dati delle stanze",
+        data: null
+      };
+    }
+    
+    // Verifica finale che rooms sia un array
+    if (!Array.isArray(rooms)) {
+      console.error('🔒 rooms non è un array dopo il parsing:', rooms);
+      return {
+        success: false,
+        error: "I dati delle stanze non sono nel formato array atteso",
+        data: null
+      };
+    }
+    
+    // Trova la stanza specifica
+    const targetRoom = rooms.find(room => room.id === parseInt(roomId));
+    if (!targetRoom) {
+      console.error('🔒 Stanza non trovata nella lista');
+      return {
+        success: false,
+        error: "Stanza non trovata",
+        data: null
+      };
+    }
+    
+    console.log('🔒 Stanza corrente:', targetRoom);
+    
+    // Gestisci i diversi formati di blockData (retrocompatibilità)
+    let requestData;
+    if (typeof blockData === 'boolean') {
+      // Vecchio formato: solo booleano
+      requestData = { isBlocked: blockData };
+    } else if (blockData && typeof blockData === 'object') {
+      // Nuovo formato: oggetto con isBlocked e blockReason
+      requestData = blockData;
+    } else {
+      console.error('🔒 Formato blockData non valido:', blockData);
+      return {
+        success: false,
+        error: "Formato dati blocco non valido",
+        data: null
+      };
+    }
+
+    // Crea i dati completi per l'update mantenendo tutti i valori esistenti
+    const updateData = {
+      nome: targetRoom.nome,
+      capienza: targetRoom.capienza, 
+      piano: targetRoom.piano,
+      isBlocked: requestData.isBlocked,
+      blockReason: requestData.blockReason || (requestData.isBlocked ? "Stanza bloccata" : null)
+    };
+    
+    console.log('🔒 Dati update completi:', updateData);
+    
+    // Esegui l'update tramite PUT /api/admin/rooms/{id}
+    const response = await fetch(`/api/admin/rooms/${roomId}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
+        "Authorization": `Bearer ${token}`
       },
-      body: JSON.stringify({ isBlocked })
+      body: JSON.stringify(updateData)
+    });
+
+    console.log('🔒 Risposta update stanza:', {
+      status: response.status,
+      statusText: response.statusText
     });
 
     if (response.ok) {
-      const data = await response.json();
+      // Gestione robusta della risposta
+      let responseText = "";
+      try {
+        responseText = await response.text();
+      } catch (e) {
+        console.log('🔒 Risposta vuota ma successo HTTP');
+      }
+      
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+          console.log('✅ Risposta JSON parsata:', data);
+        } catch (e) {
+          console.log('⚠️ Risposta non è JSON valido, ma operazione riuscita');
+          data = { 
+            message: "Operazione completata con successo",
+            roomId: roomId,
+            isBlocked: requestData.isBlocked
+          };
+        }
+      } else {
+        console.log('✅ Risposta vuota, assumo successo');
+        data = { 
+          message: "Operazione completata con successo",
+          roomId: roomId,
+          isBlocked: requestData.isBlocked
+        };
+      }
+      
+      // Aggiorna la cache locale con i nuovi dati di blocco
+      updateBlockedRoomCache(roomId, requestData.isBlocked, requestData.blockReason);
+      
       return {
         success: true,
         error: null,
         data: data
       };
+      
     } else {
-      const errorData = await response.json();
+      // Gestione errori robusta
+      let errorMessage = "Errore nell'aggiornamento della stanza";
+      
+      try {
+        const text = await response.text();
+        console.error('❌ Errore update stanza:', {
+          status: response.status,
+          statusText: response.statusText,
+          content: text
+        });
+        
+        if (text) {
+          try {
+            const errorData = JSON.parse(text);
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (e) {
+            // Se non è JSON, usa il testo raw
+            errorMessage = text.length > 100 ? text.substring(0, 100) + "..." : text;
+          }
+        }
+      } catch (e) {
+        console.error('🔒 Errore nella lettura della risposta di errore:', e);
+        errorMessage = `Errore HTTP ${response.status}: ${response.statusText}`;
+      }
+      
       return {
         success: false,
-        error: errorData.message || "Errore nel blocco/sblocco della stanza",
+        error: errorMessage,
         data: null
       };
     }
-  } catch (err) {
-    console.error("Errore di rete:", err);
+
+  } catch (error) {
+    console.error('❌ Errore rete toggleRoomBlock:', error);
     return {
       success: false,
-      error: "Errore di connessione al server",
+      error: `Errore di connessione: ${error.message}`,
       data: null
     };
   }
