@@ -439,6 +439,7 @@ export async function getMyBookings() {
           endTime: booking.fine ? booking.fine.split('T')[1]?.slice(0, 5) : booking.endTime,
           purpose: booking.descrizione || booking.purpose,
           status: booking.stato || booking.status || 'active',
+          stato: booking.stato || booking.status || 'PRENOTATA', // ✅ Aggiungiamo anche il campo 'stato'
           inizio: booking.inizio, // Mantieni anche il formato originale per compatibilità
           fine: booking.fine,
           aulaId: aulaId,
@@ -833,7 +834,10 @@ export async function updateBooking(bookingId, bookingData) {
 // Funzione per eliminare una prenotazione
 export async function deleteBooking(bookingId) {
   try {
+    console.log("🗑️ deleteBooking - Tentativo eliminazione prenotazione ID:", bookingId);
+    
     if (!localStorage.getItem("token")) {
+      console.log("❌ deleteBooking - Token mancante");
       return {
         success: false,
         error: "Token mancante. Effettua il login.",
@@ -841,6 +845,8 @@ export async function deleteBooking(bookingId) {
       };
     }
 
+    console.log("📡 deleteBooking - Invio richiesta DELETE a:", `/api/prenotazioni/${bookingId}`);
+    
     const response = await fetch(`/api/prenotazioni/${bookingId}`, {
       method: "DELETE",
       headers: {
@@ -849,7 +855,14 @@ export async function deleteBooking(bookingId) {
       }
     });
 
+    console.log("📡 deleteBooking - Risposta ricevuta:", {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
+
     if (response.ok) {
+      console.log("✅ deleteBooking - Prenotazione eliminata con successo");
       return {
         success: true,
         error: null,
@@ -857,6 +870,7 @@ export async function deleteBooking(bookingId) {
       };
     } else {
       const errorData = await response.json();
+      console.log("❌ deleteBooking - Errore dal server:", errorData);
       return {
         success: false,
         error: errorData.message || "Errore nell'eliminazione della prenotazione",
@@ -864,7 +878,122 @@ export async function deleteBooking(bookingId) {
       };
     }
   } catch (err) {
-    console.error("Errore di rete:", err);
+    console.error("❌ deleteBooking - Errore di rete:", err);
+    return {
+      success: false,
+      error: "Errore di connessione al server",
+      data: null
+    };
+  }
+}
+
+// Funzione per eliminare una prenotazione come admin (può eliminare qualsiasi prenotazione)
+export async function deleteBookingAsAdmin(bookingId, reason = null) {
+  try {
+    console.log("🗑️ deleteBookingAsAdmin - Tentativo eliminazione admin prenotazione ID:", bookingId);
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.log("❌ deleteBookingAsAdmin - Token mancante");
+      return {
+        success: false,
+        error: "Token mancante. Effettua il login.",
+        data: null
+      };
+    }
+
+    console.log("🔐 deleteBookingAsAdmin - Token presente:", token ? "SI" : "NO");
+    console.log("🔐 deleteBookingAsAdmin - Token (prime 50 char):", token ? token.substring(0, 50) + "..." : "N/A");
+    
+    // Decodifica il token per verificare il contenuto (solo per debug)
+    if (token) {
+      try {
+        const tokenParts = token.split('.');
+        if (tokenParts.length === 3) {
+          const payload = JSON.parse(atob(tokenParts[1]));
+          console.log("🔐 deleteBookingAsAdmin - Token payload:", {
+            sub: payload.sub,
+            ruolo: payload.ruolo,
+            exp: payload.exp,
+            iat: payload.iat,
+            userId: payload.userId
+          });
+          
+          // Verifica se il token è scaduto
+          const now = Math.floor(Date.now() / 1000);
+          const isExpired = payload.exp < now;
+          console.log("🔐 deleteBookingAsAdmin - Token scaduto:", isExpired, "- Scadenza:", new Date(payload.exp * 1000));
+        }
+      } catch (decodeError) {
+        console.log("⚠️ deleteBookingAsAdmin - Errore decodifica token:", decodeError);
+      }
+    }
+
+    console.log("📡 deleteBookingAsAdmin - Invio richiesta DELETE a:", `/api/admin/prenotazioni/${bookingId}`);
+    
+    const requestBody = reason ? { reason } : {};
+    
+    const response = await fetch(`/api/admin/prenotazioni/${bookingId}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: reason ? JSON.stringify(requestBody) : undefined
+    });
+
+    console.log("📡 deleteBookingAsAdmin - Risposta ricevuta:", {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
+
+    if (response.ok) {
+      // Gestione della risposta di successo
+      let responseData = null;
+      
+      try {
+        // Tenta di leggere il JSON solo se c'è contenuto
+        const contentLength = response.headers.get("content-length");
+        const contentType = response.headers.get("content-type");
+        
+        if (contentLength !== "0" && contentType && contentType.includes("application/json")) {
+          responseData = await response.json();
+        }
+      } catch (jsonError) {
+        console.log("⚠️ deleteBookingAsAdmin - Risposta senza JSON valido, probabile successo");
+      }
+      
+      console.log("✅ deleteBookingAsAdmin - Prenotazione eliminata con successo");
+      return {
+        success: true,
+        error: null,
+        data: responseData || { message: "Prenotazione eliminata con successo dall'amministratore" }
+      };
+    } else {
+      // Fallback: se l'endpoint admin non esiste, usa quello normale
+      if (response.status === 404) {
+        console.log("⚠️ deleteBookingAsAdmin - Endpoint admin non trovato, fallback a deleteBooking normale");
+        return await deleteBooking(bookingId);
+      }
+      
+      let errorData = null;
+      try {
+        errorData = await response.json();
+      } catch (jsonError) {
+        console.log("⚠️ deleteBookingAsAdmin - Errore senza JSON valido");
+        errorData = { message: "Errore nell'eliminazione della prenotazione" };
+      }
+      
+      console.log("❌ deleteBookingAsAdmin - Errore dal server:", errorData);
+      return {
+        success: false,
+        error: errorData.message || "Errore nell'eliminazione della prenotazione",
+        data: null
+      };
+    }
+  } catch (err) {
+    console.error("❌ deleteBookingAsAdmin - Errore di rete:", err);
     return {
       success: false,
       error: "Errore di connessione al server",
@@ -1150,7 +1279,7 @@ export async function getAllBookings() {
       };
     }
 
-    const response = await fetch("/api/admin/bookings", {
+    const response = await fetch("/api/prenotazioni", {
       method: "GET",
       headers: { 
         "Content-Type": "application/json",
@@ -1255,6 +1384,7 @@ export async function getAllBookings() {
           endTime: booking.fine ? booking.fine.split('T')[1]?.slice(0, 5) : booking.endTime,
           purpose: booking.descrizione || booking.purpose,
           status: booking.stato || booking.status || 'active',
+          stato: booking.stato || booking.status || 'PRENOTATA', // ✅ Aggiungiamo anche il campo 'stato'
           inizio: booking.inizio,
           fine: booking.fine,
           aulaId: aulaId,
