@@ -52,9 +52,7 @@ export default function Login() {
       <div className="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200">
         <div className="text-center mb-8">
           <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6" />
-            </svg>
+            <span className="text-2xl font-bold text-white">SP</span>
           </div>
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
             Benvenuto

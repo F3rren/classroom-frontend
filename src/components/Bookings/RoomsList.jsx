@@ -90,9 +90,9 @@ const RoomsList = () => {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-start">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
+              <div className="w-5 h-5 bg-red-400 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm font-bold">!</span>
+              </div>
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">Errore nel caricamento</h3>
@@ -165,9 +165,9 @@ const RoomsList = () => {
       {/* Lista stanze */}
       {filteredRooms.length === 0 ? (
         <div className="text-center py-12">
-          <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6" />
-          </svg>
+          <div className="bg-gray-100 w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-4">
+            <span className="text-2xl font-bold text-gray-400">---</span>
+          </div>
           <h3 className="text-lg font-medium text-gray-900 mb-1">Nessuna stanza trovata</h3>
           <p className="text-gray-500">
             {searchTerm || floorFilter !== 'all' 

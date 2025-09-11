@@ -199,22 +199,15 @@ const BookingManagement = ({ currentUser }) => {
       {/* Errore */}
       {error && (
         <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-          <div className="flex">
-            <div className="py-1">
-              <svg className="fill-current h-6 w-6 text-red-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                <path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM9 11V9h2v6H9v-4zm0-6h2v2H9V5z"/>
-              </svg>
-            </div>
-            <div>
-              <p className="font-bold">Errore nel caricamento delle prenotazioni</p>
-              <p className="text-sm">{error}</p>
-              <button 
-                onClick={loadBookings}
-                className="mt-2 text-sm underline"
-              >
-                Riprova
-              </button>
-            </div>
+          <div>
+            <p className="font-bold">Errore nel caricamento delle prenotazioni</p>
+            <p className="text-sm">{error}</p>
+            <button 
+              onClick={loadBookings}
+              className="mt-2 text-sm underline"
+            >
+              Riprova
+            </button>
           </div>
         </div>
       )}
@@ -241,9 +234,6 @@ const BookingManagement = ({ currentUser }) => {
 
       {!Array.isArray(filteredBookings) || filteredBookings.length === 0 ? (
         <div className="text-center py-12">
-          <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 0V9a2 2 0 01-2-2V3m0 4h10m-5 0v6m3-3h4" />
-          </svg>
           <h3 className="text-lg font-medium text-gray-900 mb-1">
             Nessuna prenotazione trovata
           </h3>
@@ -285,32 +275,24 @@ const BookingManagement = ({ currentUser }) => {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
                       <div className="flex items-center">
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 0V9a2 2 0 01-2-2V3m0 4h10m-5 0v6m3-3h4" />
-                        </svg>
+                        <span className="font-medium mr-2">Data:</span>
                         <span>{formatDate(booking.date)}</span>
                       </div>
                       
                       <div className="flex items-center">
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <span className="font-medium mr-2">Orario:</span>
                         <span>{booking.startTime || 'N/A'} - {booking.endTime || 'N/A'}</span>
                       </div>
 
                       <div className="flex items-center">
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        <span className="truncate">Utente: {booking.userName || 'N/A'}</span>
+                        <span className="font-medium mr-2">Utente:</span>
+                        <span className="truncate">{booking.userName || 'N/A'}</span>
                       </div>
 
                       {booking.purpose && (
                         <div className="flex items-center col-span-1 md:col-span-3">
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <span className="truncate">Scopo: {booking.purpose}</span>
+                          <span className="font-medium mr-2">Scopo:</span>
+                          <span className="truncate">{booking.purpose}</span>
                         </div>
                       )}
                     </div>

@@ -6,3 +6,4 @@ export { default as BookingModal } from './BookingModal';
 export { default as EditBookingModal } from './EditBookingModal';
 export { default as RoomEditModal } from './RoomEditModal';
 export { default as MyBookings } from './MyBookings';
+export { default as WeeklyCalendar } from './WeeklyCalendar';

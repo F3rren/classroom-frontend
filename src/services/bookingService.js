@@ -490,8 +490,8 @@ export async function createBooking(bookingData) {
     const endDateTime = `${bookingData.date}T${bookingData.endTime}:00`;
 
     const backendRequest = {
-      aulaId: parseInt(bookingData.roomId),  // Converte roomId in aulaId
-      corsoId: bookingData.corsoId || 1,    // Usa corsoId se fornito, altrimenti default a 1
+      aulaId: parseInt(bookingData.aulaId),  // Usa aulaId direttamente (fix per WeeklyCalendar)
+      corsoId: bookingData.corsoId || null, // Usa corsoId se fornito, altrimenti null (prenotazione libera)
       inizio: startDateTime,                // Converte date+startTime in formato LocalDateTime
       fine: endDateTime,                    // Converte date+endTime in formato LocalDateTime
       descrizione: bookingData.purpose || "" // Converte purpose in descrizione
