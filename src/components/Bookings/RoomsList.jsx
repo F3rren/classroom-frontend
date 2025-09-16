@@ -16,6 +16,9 @@ const RoomsList = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [floorFilter, setFloorFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [capacityFilter, setCapacityFilter] = useState('all');
+  const [featureFilter, setFeatureFilter] = useState('all');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [selectedDateBookings, setSelectedDateBookings] = useState([]);
 
@@ -73,16 +76,91 @@ const RoomsList = () => {
     console.log(`Selected date: ${date.toDateString()}, bookings:`, bookings);
   };
 
+  // Funzione helper per determinare lo stato della stanza
+  const getRoomStatus = (room) => {
+    if (room.isBlocked || room.blocked) return 'BLOCCATA';
+    
+    const bookings = room.bookings || [];
+    if (bookings.length === 0) return 'LIBERA';
+    
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5);
+    const today = now.toISOString().split('T')[0];
+    
+    const todayBookings = bookings.filter(booking => 
+      (booking.date || booking.data) === today
+    );
+    
+    if (todayBookings.length === 0) return 'LIBERA';
+    
+    const isCurrentlyOccupied = todayBookings.some(booking => {
+      const startTime = booking.startTime || booking.oraInizio;
+      const endTime = booking.endTime || booking.oraFine;
+      return startTime && endTime && currentTime >= startTime && currentTime <= endTime;
+    });
+    
+    return isCurrentlyOccupied ? 'OCCUPATA' : 'PRENOTATA';
+  };
+
+  // Funzione helper per categorizzare la capacità
+  const getCapacityCategory = (capacity) => {
+    if (!capacity) return 'unknown';
+    if (capacity <= 15) return 'small';
+    if (capacity <= 30) return 'medium';
+    return 'large';
+  };
+
   // Filtra le stanze
   const filteredRooms = rooms.filter(room => {
     const matchesSearch = room.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          room.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFloor = floorFilter === 'all' || room.floor?.toString() === floorFilter;
-    return matchesSearch && matchesFloor;
+    
+    // Filtro stato
+    const roomStatus = getRoomStatus(room);
+    const matchesStatus = statusFilter === 'all' || roomStatus === statusFilter;
+    
+    // Filtro capacità
+    const capacityCategory = getCapacityCategory(room.capacity);
+    const matchesCapacity = capacityFilter === 'all' || capacityCategory === capacityFilter;
+    
+    // Filtro attrezzature
+    let matchesFeature = true;
+    if (featureFilter !== 'all') {
+      const roomFeatures = room.features || [];
+      matchesFeature = roomFeatures.some(feature => 
+        feature.toLowerCase().includes(featureFilter.toLowerCase())
+      );
+    }
+    
+    return matchesSearch && matchesFloor && matchesStatus && matchesCapacity && matchesFeature;
   });
 
   // Ottieni i piani disponibili
   const availableFloors = [...new Set(rooms.map(room => room.floor?.toString()).filter(Boolean))].sort();
+
+  // Ottieni le attrezzature disponibili
+  const availableFeatures = [...new Set(
+    rooms.flatMap(room => room.features || [])
+      .filter(Boolean)
+  )].sort();
+
+  // Opzioni stati
+  const statusOptions = [
+    { value: 'all', label: 'Tutti gli stati' },
+    { value: 'LIBERA', label: 'Libere' },
+    { value: 'PRENOTATA', label: 'Prenotate' },
+    { value: 'OCCUPATA', label: 'Occupate' },
+    { value: 'BLOCCATA', label: 'Bloccate' }
+  ];
+
+  // Opzioni capacità
+  const capacityOptions = [
+    { value: 'all', label: 'Tutte le capienze' },
+    { value: 'small', label: 'Piccole (fino a 15 posti)' },
+    { value: 'medium', label: 'Medie (16-30 posti)' },
+    { value: 'large', label: 'Grandi (oltre 30 posti)' }
+  ];
 
   if (loading) {
     return (
@@ -188,53 +266,225 @@ const RoomsList = () => {
         <div className="lg:col-span-3">
           {/* Filtri */}
           <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Cerca stanze
-            </label>
-            <input
-              type="text"
-              placeholder="Nome stanza o descrizione..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Ricerca testuale */}
+              <div className="lg:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cerca stanze
+                </label>
+                <input
+                  type="text"
+                  placeholder="Nome stanza o descrizione..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              {/* Filtro Piano */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Piano
+                </label>
+                <select
+                  value={floorFilter}
+                  onChange={(e) => setFloorFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">Tutti i piani</option>
+                  {availableFloors.map(floor => (
+                    <option key={floor} value={floor}>
+                      Piano {floor}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro Stato */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Stato
+                </label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {statusOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro Capacità */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Capacità
+                </label>
+                <select
+                  value={capacityFilter}
+                  onChange={(e) => setCapacityFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {capacityOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro Attrezzature */}
+              {availableFeatures.length > 0 && (
+                <div className="lg:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Attrezzature
+                  </label>
+                  <select
+                    value={featureFilter}
+                    onChange={(e) => setFeatureFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">Tutte le attrezzature</option>
+                    {availableFeatures.map(feature => (
+                      <option key={feature} value={feature}>
+                        {feature}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Pulsante Reset filtri */}
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setFloorFilter('all');
+                    setStatusFilter('all');
+                    setCapacityFilter('all');
+                    setFeatureFilter('all');
+                  }}
+                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium"
+                >
+                  Cancella filtri
+                </button>
+              </div>
+            </div>
+
+            {/* Riepilogo filtri attivi */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {searchTerm && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  Ricerca: "{searchTerm}"
+                  <button 
+                    onClick={() => setSearchTerm('')}
+                    className="ml-1 text-blue-600 hover:text-blue-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {floorFilter !== 'all' && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Piano {floorFilter}
+                  <button 
+                    onClick={() => setFloorFilter('all')}
+                    className="ml-1 text-green-600 hover:text-green-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {statusFilter !== 'all' && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                  {statusOptions.find(opt => opt.value === statusFilter)?.label}
+                  <button 
+                    onClick={() => setStatusFilter('all')}
+                    className="ml-1 text-yellow-600 hover:text-yellow-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {capacityFilter !== 'all' && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                  {capacityOptions.find(opt => opt.value === capacityFilter)?.label}
+                  <button 
+                    onClick={() => setCapacityFilter('all')}
+                    className="ml-1 text-purple-600 hover:text-purple-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {featureFilter !== 'all' && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                  {featureFilter}
+                  <button 
+                    onClick={() => setFeatureFilter('all')}
+                    className="ml-1 text-indigo-600 hover:text-indigo-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Piano
-            </label>
-            <select
-              value={floorFilter}
-              onChange={(e) => setFloorFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tutti i piani</option>
-              {availableFloors.map(floor => (
-                <option key={floor} value={floor}>
-                  Piano {floor}
-                </option>
-              ))}
-            </select>
-          </div>
+
+          {/* Header con contatore */}
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-medium text-gray-900">
+                Stanze disponibili
+              </h2>
+              <p className="text-sm text-gray-500">
+                {filteredRooms.length} di {rooms.length} stanze
+                {(searchTerm || floorFilter !== 'all' || statusFilter !== 'all' || 
+                  capacityFilter !== 'all' || featureFilter !== 'all') && ' (filtrate)'}
+              </p>
             </div>
           </div>
 
           {/* Lista stanze */}
           {filteredRooms.length === 0 ? (
             <div className="text-center py-12">
-              <div className="bg-gray-100 w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-4">
-                <span className="text-2xl font-bold text-gray-400">---</span>
+              <div className="bg-gray-100 w-16 h-16 mx-auto rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m0 0h4M9 7h6m-6 4h6m-5 4h5"/>
+                </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-1">Nessuna stanza trovata</h3>
-              <p className="text-gray-500">
-                {searchTerm || floorFilter !== 'all' 
-                  ? 'Prova a modificare i filtri di ricerca' 
-                  : 'Non ci sono stanze disponibili al momento'
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {rooms.length === 0 ? 'Nessuna stanza disponibile' : 'Nessun risultato trovato'}
+              </h3>
+              <p className="text-gray-500 mb-4">
+                {rooms.length === 0 
+                  ? 'Non ci sono stanze registrate nel sistema'
+                  : 'Nessuna stanza corrisponde ai filtri selezionati'
                 }
               </p>
+              {(searchTerm || floorFilter !== 'all' || statusFilter !== 'all' || 
+                capacityFilter !== 'all' || featureFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setFloorFilter('all');
+                    setStatusFilter('all');
+                    setCapacityFilter('all');
+                    setFeatureFilter('all');
+                  }}
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                  Cancella tutti i filtri
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
