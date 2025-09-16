@@ -12,6 +12,8 @@ const WeeklyCalendar = () => {
   const [error, setError] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [slotDetails, setSlotDetails] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
 
   // Fasce orarie fisse
@@ -105,23 +107,82 @@ const WeeklyCalendar = () => {
     });
   };
 
+  // Trova la prenotazione per uno slot specifico
+  const findBookingForSlot = (roomId, date, timeSlot) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return bookings.find(booking => {
+      if (booking.stato === 'ANNULLATA') return false;
+      
+      const bookingDate = booking.date;
+      const bookingStartTime = booking.startTime;
+      const bookingEndTime = booking.endTime;
+      const bookingRoomId = booking.roomId || booking.aulaId;
+
+      return (
+        bookingRoomId === roomId &&
+        bookingDate === dateStr &&
+        ((bookingStartTime <= timeSlot.startTime && bookingEndTime > timeSlot.startTime) ||
+         (bookingStartTime < timeSlot.endTime && bookingEndTime >= timeSlot.endTime) ||
+         (bookingStartTime >= timeSlot.startTime && bookingEndTime <= timeSlot.endTime))
+      );
+    });
+  };
+
+  // Trova i dettagli del blocco per una stanza
+  const findBlockDetailsForRoom = (roomId) => {
+    const room = rooms.find(r => r.id === roomId);
+    return room && room.isBlocked ? {
+      reason: room.blockReason || 'Motivo non specificato',
+      isBlocked: true
+    } : null;
+  };
+
   // Gestisce il click su uno slot
   const handleSlotClick = (roomId, date, timeSlot) => {
-    if (isSlotOccupied(roomId, date, timeSlot)) {
-      return; // Non fare nulla se lo slot è occupato
+    const isOccupied = isSlotOccupied(roomId, date, timeSlot);
+    const room = rooms.find(r => r.id === roomId);
+    const isBlocked = room?.isBlocked;
+    const isPast = date < new Date().setHours(0, 0, 0, 0);
+    
+    // Se è occupato, mostra i dettagli della prenotazione
+    if (isOccupied) {
+      const booking = findBookingForSlot(roomId, date, timeSlot);
+      setSlotDetails({
+        type: 'booking',
+        roomName: room?.nome || `Stanza ${roomId}`,
+        date: date,
+        timeSlot: timeSlot,
+        booking: booking
+      });
+      setShowDetailsModal(true);
+      return;
     }
-
-    const now = new Date();
-    if (date < now.setHours(0, 0, 0, 0)) {
-      alert('Non puoi prenotare date passate');
+    
+    // Se è bloccato, mostra i dettagli del blocco
+    if (isBlocked) {
+      const blockDetails = findBlockDetailsForRoom(roomId);
+      setSlotDetails({
+        type: 'blocked',
+        roomName: room?.nome || `Stanza ${roomId}`,
+        date: date,
+        timeSlot: timeSlot,
+        blockDetails: blockDetails
+      });
+      setShowDetailsModal(true);
+      return;
+    }
+    
+    // Se è nel passato, non fare nulla
+    if (isPast) {
       return;
     }
 
+    // Se è libero, apri il modale di prenotazione
     setSelectedSlot({
       roomId,
       date: date.toISOString().split('T')[0],
       timeSlot,
-      roomName: rooms.find(r => r.id === roomId)?.nome || `Stanza ${roomId}`
+      roomName: room?.nome || `Stanza ${roomId}`
     });
     setShowBookingModal(true);
   };
@@ -186,21 +247,24 @@ const WeeklyCalendar = () => {
             </button>
           </div>
         </div>
-        <p className="text-gray-600">Clicca su uno slot libero per prenotare. Verde = Libero, Rosso = Occupato</p>
       </div>
 
       {/* Legenda */}
       <div className="mb-6 flex items-center gap-6">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-green-200 border border-green-300 rounded"></div>
+          <div className="w-4 h-4 bg-green-600 border border-green-600 rounded"></div>
           <span className="text-sm text-gray-600">Disponibile</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-red-200 border border-red-300 rounded"></div>
-          <span className="text-sm text-gray-600">Occupato</span>
+          <div className="w-4 h-4 bg-red-600 border border-red-600 rounded"></div>
+          <span className="text-sm text-gray-600">Occupato (clicca per dettagli)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-gray-200 border border-gray-300 rounded"></div>
+          <div className="w-4 h-4 bg-yellow-600 border border-yellow-600 rounded"></div>
+          <span className="text-sm text-gray-600">Bloccata (clicca per motivo)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-gray-600 border border-gray-600 rounded"></div>
           <span className="text-sm text-gray-600">Data passata</span>
         </div>
       </div>
@@ -246,27 +310,27 @@ const WeeklyCalendar = () => {
                     const isPast = day < new Date().setHours(0, 0, 0, 0);
                     const isBlocked = room.isBlocked;
 
-                    let slotClass = "p-2 h-16 cursor-pointer transition-colors flex items-center justify-center text-xs font-medium ";
+                    let slotClass = "p-2 h-16 cursor-pointer transition-colors flex items-center justify-center text-sm font-bold ";
                     
                     if (slotIndex === 0) {
                       slotClass += "border-r ";
                     }
                     
                     if (isPast) {
-                      slotClass += "bg-gray-100 text-gray-400 cursor-not-allowed";
+                      slotClass += "bg-gray-100 text-gray-600 cursor-not-allowed font-bold";
                     } else if (isBlocked) {
-                      slotClass += "bg-yellow-100 text-yellow-700 cursor-not-allowed";
+                      slotClass += "bg-yellow-400 text-yellow-700 cursor-pointer font-bold hover:bg-yellow-300";
                     } else if (isOccupied) {
-                      slotClass += "bg-red-100 text-red-700 cursor-not-allowed";
+                      slotClass += "bg-red-400 text-red-700 cursor-pointer font-bold hover:bg-red-300";
                     } else {
-                      slotClass += "bg-green-50 hover:bg-green-100 text-green-700";
+                      slotClass += "bg-green-400 hover:bg-green-200 text-green-700";
                     }
 
                     return (
                       <div
                         key={slotIndex}
                         className={slotClass}
-                        onClick={() => !isPast && !isOccupied && !isBlocked && handleSlotClick(room.id, day, timeSlot)}
+                        onClick={() => handleSlotClick(room.id, day, timeSlot)}
                       >
                         <div className="text-center">
                           {isPast ? 'Passato' : 
@@ -294,6 +358,14 @@ const WeeklyCalendar = () => {
             window.location.reload();
           }}
           currentUser={currentUser}
+        />
+      )}
+
+      {/* Modal dettagli slot occupato/bloccato */}
+      {showDetailsModal && slotDetails && (
+        <SlotDetailsModal
+          details={slotDetails}
+          onClose={() => setShowDetailsModal(false)}
         />
       )}
     </div>
@@ -392,6 +464,102 @@ const BookingModal = ({ slot, onClose, onSuccess, currentUser }) => {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+};
+
+// Componente Modal per visualizzare i dettagli di slot occupati o bloccati
+const SlotDetailsModal = ({ details, onClose }) => {
+  const { type, roomName, date, timeSlot, booking, blockDetails } = details;
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('it-IT', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">
+            {type === 'booking' ? 'Dettagli Prenotazione' : 'Stanza Bloccata'}
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 text-xl font-bold"
+          >
+            ×
+          </button>
+        </div>
+        
+        <div className="mb-4 space-y-3">
+          <div>
+            <strong className="text-gray-700">Stanza:</strong>
+            <span className="ml-2">{roomName}</span>
+          </div>
+          
+          <div>
+            <strong className="text-gray-700">Data:</strong>
+            <span className="ml-2">{formatDate(date)}</span>
+          </div>
+          
+          <div>
+            <strong className="text-gray-700">Orario:</strong>
+            <span className="ml-2">{timeSlot.hours}</span>
+          </div>
+
+          {type === 'booking' && booking && (
+            <>
+              <div>
+                <strong className="text-gray-700">Prenotato da:</strong>
+                <span className="ml-2">{booking.userName || 'Utente sconosciuto'}</span>
+              </div>
+              
+              <div>
+                <strong className="text-gray-700">Stato:</strong>
+                <span className={`ml-2 px-2 py-1 rounded text-sm ${
+                  booking.stato === 'PRENOTATA' ? 'bg-green-100 text-green-800' :
+                  booking.stato === 'ANNULLATA' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {booking.stato || 'Attiva'}
+                </span>
+              </div>
+
+              {booking.purpose && (
+                <div>
+                  <strong className="text-gray-700">Motivazione:</strong>
+                  <div className="mt-1 p-3 bg-gray-50 rounded-lg text-sm">
+                    {booking.purpose}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {type === 'blocked' && blockDetails && (
+            <div>
+              <strong className="text-gray-700">Motivo blocco:</strong>
+              <div className="mt-1 p-3 bg-yellow-50 rounded-lg text-sm">
+                {blockDetails.reason}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            Chiudi
+          </button>
+        </div>
       </div>
     </div>
   );
