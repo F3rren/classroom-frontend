@@ -1,14 +1,124 @@
 import { useState, useEffect } from 'react';
-import { toggleRoomBlock } from '../../services/bookingService';
+import { toggleRoomBlock, getRoomBookingsByDate } from '../../services/bookingService';
+
+// Funzione helper per convertire date senza problemi di fuso orario
+const formatDateLocal = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Finestre temporali
+const TIME_SLOTS = [
+  { id: 'morning', label: 'Mattina', startTime: '09:00', endTime: '13:00', hours: '9:00-13:00' },
+  { id: 'afternoon', label: 'Pomeriggio', startTime: '14:00', endTime: '18:00', hours: '14:00-18:00' }
+];
+
+// Funzioni helper per dati di default
+const getDefaultDescription = (room) => {
+  const capacity = room.capacity || 20;
+  const floor = room.floor || 1;
+  
+  if (capacity >= 50) {
+    return `Aula magna al piano ${floor}, ideale per conferenze e grandi eventi.`;
+  } else if (capacity >= 30) {
+    return `Aula spaziosa al piano ${floor}, perfetta per lezioni e presentazioni.`;
+  } else if (capacity >= 15) {
+    return `Aula di dimensioni medie al piano ${floor}, adatta per corsi e riunioni.`;
+  } else {
+    return `Sala meeting al piano ${floor}, ideale per piccoli gruppi e colloqui.`;
+  }
+};
+
+const getDefaultFeatures = (room) => {
+  const capacity = room.capacity || 20;
+  const floor = room.floor || 1;
+  const features = [];
+  
+  // Features basate sulla capacità
+  if (capacity >= 30) {
+    features.push('Proiettore', 'Microfono', 'Aria condizionata');
+  } else if (capacity >= 15) {
+    features.push('Proiettore', 'WiFi', 'Lavagna');
+  } else {
+    features.push('WiFi', 'Televisore', 'Lavagna bianca');
+  }
+  
+  // Features basate sul piano
+  if (floor === 1) {
+    features.push('Accessibile');
+  } else if (floor >= 3) {
+    features.push('Vista panoramica');
+  }
+  
+  return features.slice(0, 3); // Massimo 3 features
+};
+
+// Funzione per controllare disponibilità delle finestre temporali
+const checkTimeSlotAvailability = (bookings) => {
+  const availability = {};
+  const now = new Date();
+  const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+  
+  TIME_SLOTS.forEach(slot => {
+    // Controlla se ci sono prenotazioni che si sovrappongono con la finestra
+    const hasConflict = bookings.some(booking => {
+      if (!booking.startTime || !booking.endTime) return false;
+      
+      const bookingStart = booking.startTime;
+      const bookingEnd = booking.endTime;
+      const slotStart = slot.startTime;
+      const slotEnd = slot.endTime;
+      
+      // Verifica sovrapposizione
+      return (bookingStart < slotEnd && bookingEnd > slotStart);
+    });
+    
+    // Se la finestra temporale è in corso ora, verifica se c'è una prenotazione attiva
+    let isCurrentlyOccupied = false;
+    if (currentTime >= slot.startTime && currentTime <= slot.endTime) {
+      isCurrentlyOccupied = bookings.some(booking => {
+        if (!booking.startTime || !booking.endTime) return false;
+        return (currentTime >= booking.startTime && currentTime <= booking.endTime);
+      });
+    }
+    
+    availability[slot.id] = !hasConflict && !isCurrentlyOccupied;
+  });
+  
+  return availability;
+};
 
 const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
   const [isBlocking, setIsBlocking] = useState(false);
   const [isBlocked, setIsBlocked] = useState(room.isBlocked || room.blocked !== null);
+  const [todayAvailability, setTodayAvailability] = useState(null);
 
   // Aggiorna lo stato quando il room prop cambia
   useEffect(() => {
     setIsBlocked(room.isBlocked || room.blocked !== null);
   }, [room.isBlocked, room.blocked]);
+
+  // Carica la disponibilità per oggi
+  useEffect(() => {
+    const loadTodayAvailability = async () => {
+      if (!room.id) return;
+      
+      const today = formatDateLocal(new Date());
+      try {
+        const result = await getRoomBookingsByDate(room.id, today);
+        if (result.success) {
+          const availability = checkTimeSlotAvailability(result.data);
+          setTodayAvailability(availability);
+        }
+      } catch (error) {
+        console.error('Errore nel caricamento disponibilità:', error);
+      }
+    };
+
+    loadTodayAvailability();
+  }, [room.id]);
 
   const handleToggleBlock = async (e) => {
     e.stopPropagation();
@@ -28,24 +138,86 @@ const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
     }
   };
 
+  // Funzione per verificare lo stato della stanza basato sull'orario
+  const getRoomStatus = () => {
+    // Debug: log dei dati della stanza
+    console.log('🔍 Debug getRoomStatus per stanza:', room.name, {
+      bookings: room.bookings,
+      allRoomData: room
+    });
+    
+    const bookings = room.bookings || [];
+    if (bookings.length === 0) {
+      console.log('📝 Nessuna prenotazione -> LIBERA');
+      return 'LIBERA';
+    }
+    
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+    const today = formatDateLocal(now);
+    
+    console.log('⏰ Orario corrente:', currentTime, 'Data:', today);
+    
+    // Filtra solo le prenotazioni di oggi
+    const todayBookings = bookings.filter(booking => {
+      const bookingDate = booking.date || booking.data;
+      return bookingDate === today;
+    });
+    
+    if (todayBookings.length === 0) {
+      console.log('📅 Nessuna prenotazione oggi -> LIBERA');
+      return 'LIBERA';
+    }
+    
+    // Controlla se è attualmente occupata
+    const isCurrentlyOccupied = todayBookings.some(booking => {
+      const startTime = booking.startTime || booking.oraInizio;
+      const endTime = booking.endTime || booking.oraFine;
+      
+      if (!startTime || !endTime) {
+        console.log('⚠️ Orari mancanti:', {startTime, endTime});
+        return false;
+      }
+      
+      const isActive = currentTime >= startTime && currentTime <= endTime;
+      console.log('🕒 Controllo occupazione:', {currentTime, startTime, endTime, isActive});
+      
+      return isActive;
+    });
+    
+    if (isCurrentlyOccupied) {
+      console.log('🔴 Stanza OCCUPATA ora');
+      return 'OCCUPATA';
+    }
+    
+    // Se non è occupata ora ma ha prenotazioni oggi, è prenotata
+    console.log('🟡 Stanza PRENOTATA (ha prenotazioni ma non ora)');
+    return 'PRENOTATA';
+  };
+
   const getStatusColor = () => {
     if (isBlocked || room.isBlocked || room.blocked !== null) {
       return 'bg-red-500 text-white border-red-500';
     }
-    if (room.status === 'prenotata') {
-      return 'bg-yellow-500 text-white border-yellow-500';
+    
+    const status = getRoomStatus();
+    switch (status) {
+      case 'OCCUPATA':
+        return 'bg-red-500 text-white border-red-500';
+      case 'PRENOTATA':
+        return 'bg-yellow-500 text-white border-yellow-500';
+      case 'LIBERA':
+      default:
+        return 'bg-green-500 text-white border-green-500';
     }
-    return 'bg-green-500 text-white border-green-500';
   };
 
   const getStatusText = () => {
     if (isBlocked || room.isBlocked || room.blocked !== null) {
       return 'BLOCCATA';
     }
-    if (room.status === 'prenotata') {
-      return 'PRENOTATA';
-    }
-    return 'LIBERA';
+    
+    return getRoomStatus();
   };
 
   return (
@@ -114,7 +286,7 @@ const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            Piano {room.floor || 'N/A'}
+            Piano {room.floor || 'Terra'}
           </div>
 
           {room.capacity && (
@@ -126,27 +298,69 @@ const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
             </div>
           )}
 
-          {room.description && (
-            <p className="text-sm text-gray-600 line-clamp-2">
-              {room.description}
-            </p>
-          )}
+          {/* Descrizione con fallback */}
+          <div className="text-sm text-gray-600">
+            {room.description ? (
+              <p className="line-clamp-2">{room.description}</p>
+            ) : (
+              <p className="text-gray-500 italic">
+                {getDefaultDescription(room)}
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Attrezzature/Features */}
-        {room.features && room.features.length > 0 && (
-          <div className="mb-4">
-            <div className="flex flex-wrap gap-1">
-              {room.features.slice(0, 3).map((feature, index) => (
-                <span key={index} className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
+        {/* Attrezzature/Features con fallback */}
+        <div className="mb-4">
+          <div className="flex flex-wrap gap-1">
+            {(room.features && room.features.length > 0) ? (
+              <>
+                {room.features.slice(0, 3).map((feature, index) => (
+                  <span key={index} className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-700 border border-blue-200">
+                    {feature}
+                  </span>
+                ))}
+                {room.features.length > 3 && (
+                  <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-500">
+                    +{room.features.length - 3} altre
+                  </span>
+                )}
+              </>
+            ) : (
+              // Attrezzature predefinite basate su piano/capacità
+              getDefaultFeatures(room).map((feature, index) => (
+                <span key={index} className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200">
                   {feature}
                 </span>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Disponibilità finestre temporali per oggi */}
+        {!isBlocked && todayAvailability && (
+          <div className="mb-4">
+            <div className="text-xs font-medium text-gray-700 mb-2">Disponibilità oggi:</div>
+            <div className="flex gap-2">
+              {TIME_SLOTS.map(slot => (
+                <div key={slot.id} className="flex-1">
+                  <div className={`text-center py-2 px-2 rounded text-xs font-medium ${
+                    todayAvailability[slot.id] 
+                      ? 'bg-green-100 text-green-700 border border-green-200' 
+                      : 'bg-red-100 text-red-700 border border-red-200'
+                  }`}>
+                    <div className="font-semibold">{slot.label}</div>
+                    <div className="opacity-75">{slot.hours}</div>
+                    <div className="mt-1">
+                      {todayAvailability[slot.id] ? (
+                        <span className="text-green-600">✓ Libera</span>
+                      ) : (
+                        <span className="text-red-600">✗ Occupata</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ))}
-              {room.features.length > 3 && (
-                <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-500">
-                  +{room.features.length - 3} altro
-                </span>
-              )}
             </div>
           </div>
         )}

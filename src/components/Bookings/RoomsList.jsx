@@ -4,6 +4,7 @@ import { getCurrentUser } from '../../services/authService';
 import RoomCard from './RoomCard';
 import BookingModal from './BookingModal';
 import RoomEditModal from './RoomEditModal';
+import BookingsCalendarWidget from './BookingsCalendarWidget';
 
 const RoomsList = () => {
   const [rooms, setRooms] = useState([]);
@@ -15,6 +16,8 @@ const RoomsList = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [floorFilter, setFloorFilter] = useState('all');
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
+  const [selectedDateBookings, setSelectedDateBookings] = useState([]);
 
   useEffect(() => {
     loadRooms();
@@ -62,6 +65,12 @@ const RoomsList = () => {
     setSelectedRoom(null);
     // Ricarica le stanze
     loadRooms();
+  };
+
+  const handleDateSelect = (date, bookings) => {
+    setSelectedCalendarDate(date);
+    setSelectedDateBookings(bookings);
+    console.log(`Selected date: ${date.toDateString()}, bookings:`, bookings);
   };
 
   // Filtra le stanze
@@ -126,9 +135,60 @@ const RoomsList = () => {
         </p>
       </div>
 
-      {/* Filtri */}
-      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Layout principale con calendario e filtri */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Colonna sinistra - Calendario */}
+        <div className="lg:col-span-1">
+          <BookingsCalendarWidget onDateSelect={handleDateSelect} />
+          
+          {/* Informazioni data selezionata */}
+          {selectedCalendarDate && (
+            <div className="mt-4 bg-white rounded-lg shadow-md p-4">
+              <h4 className="font-medium text-gray-900 mb-2">
+                {selectedCalendarDate.toLocaleDateString('it-IT', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </h4>
+              
+              {selectedDateBookings.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-600">
+                    {selectedDateBookings.length} prenotazioni:
+                  </p>
+                  {selectedDateBookings.slice(0, 3).map((booking, index) => (
+                    <div key={index} className="text-xs bg-gray-50 p-2 rounded">
+                      <div className="font-medium">
+                        Stanza {booking.roomName || booking.roomId}
+                      </div>
+                      <div className="text-gray-600">
+                        {booking.startTime}-{booking.endTime}
+                      </div>
+                      {booking.purpose && (
+                        <div className="text-gray-500">{booking.purpose}</div>
+                      )}
+                    </div>
+                  ))}
+                  {selectedDateBookings.length > 3 && (
+                    <p className="text-xs text-gray-500 text-center">
+                      +{selectedDateBookings.length - 3} altre
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Nessuna prenotazione</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Colonna destra - Lista stanze */}
+        <div className="lg:col-span-3">
+          {/* Filtri */}
+          <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Cerca stanze
@@ -159,36 +219,38 @@ const RoomsList = () => {
               ))}
             </select>
           </div>
+            </div>
+          </div>
+
+          {/* Lista stanze */}
+          {filteredRooms.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="bg-gray-100 w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-4">
+                <span className="text-2xl font-bold text-gray-400">---</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-1">Nessuna stanza trovata</h3>
+              <p className="text-gray-500">
+                {searchTerm || floorFilter !== 'all' 
+                  ? 'Prova a modificare i filtri di ricerca' 
+                  : 'Non ci sono stanze disponibili al momento'
+                }
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredRooms.map(room => (
+                <RoomCard
+                  key={room.id}
+                  room={room}
+                  onBook={handleBookRoom}
+                  onEdit={user?.ruolo === 'admin' ? handleEditRoom : null}
+                  isAdmin={user?.ruolo === 'admin'}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Lista stanze */}
-      {filteredRooms.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="bg-gray-100 w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-4">
-            <span className="text-2xl font-bold text-gray-400">---</span>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">Nessuna stanza trovata</h3>
-          <p className="text-gray-500">
-            {searchTerm || floorFilter !== 'all' 
-              ? 'Prova a modificare i filtri di ricerca' 
-              : 'Non ci sono stanze disponibili al momento'
-            }
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredRooms.map(room => (
-            <RoomCard
-              key={room.id}
-              room={room}
-              onBook={handleBookRoom}
-              onEdit={user?.ruolo === 'admin' ? handleEditRoom : null}
-              isAdmin={user?.ruolo === 'admin'}
-            />
-          ))}
-        </div>
-      )}
 
       {/* Modal prenotazione */}
       {showBookingModal && selectedRoom && (

@@ -1,79 +1,91 @@
 import { useState, useEffect } from 'react';
-import { createBooking, checkAvailability } from '../../services/bookingService';
+import { createBooking, getRoomBookingsByDate, analyzeRoomAvailability } from '../../services/bookingService';
+
+// Funzione helper per convertire date senza problemi di fuso orario
+const formatDateLocal = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Fasce orarie per le aule fisiche (come nel WeeklyCalendar)
+const TIME_SLOTS = [
+  { id: 'morning', label: 'Mattina', startTime: '09:00', endTime: '13:00', hours: '9:00-13:00' },
+  { id: 'afternoon', label: 'Pomeriggio', startTime: '14:00', endTime: '18:00', hours: '14:00-18:00' }
+];
 
 const BookingModal = ({ room, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     date: '',
+    timeSlot: '', // Sostituisce startTime e endTime
     startTime: '',
     endTime: '',
-    purpose: '',
-    corsoId: '1' // Corso di default
+    purpose: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [checkingAvailability, setCheckingAvailability] = useState(false);
-  const [availabilityResult, setAvailabilityResult] = useState(null);
+  const [roomAvailabilityInfo, setRoomAvailabilityInfo] = useState(null);
+  const [checkingRoomInfo, setCheckingRoomInfo] = useState(false);
 
   // Imposta data minima (oggi)
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatDateLocal(new Date());
 
   // Reset risultato disponibilità quando cambiano i dati del form
   useEffect(() => {
-    setAvailabilityResult(null);
     setError(null);
-  }, [formData.date, formData.startTime, formData.endTime]);
-  
-  // Genera opzioni orarie
-  const timeOptions = [];
-  for (let hour = 8; hour <= 20; hour++) {
-    for (let minute = 0; minute < 60; minute += 30) {
-      const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      timeOptions.push(timeString);
-    }
-  }
+  }, [formData.date, formData.timeSlot]);
 
-  // Funzione per verificare la disponibilità
-  const handleCheckAvailability = async () => {
-    if (!formData.date || !formData.startTime || !formData.endTime) {
-      setError('Inserisci data, ora di inizio e ora di fine per verificare la disponibilità');
-      return;
-    }
-
-    if (formData.startTime >= formData.endTime) {
-      setError('L\'orario di fine deve essere successivo a quello di inizio');
-      return;
-    }
-
-    setCheckingAvailability(true);
-    setError(null);
-    setAvailabilityResult(null);
-
-    try {
-      const result = await checkAvailability(room.id, formData.date, formData.startTime, formData.endTime);
-      
-      if (result.success) {
-        setAvailabilityResult(result.data);
-      } else {
-        setError(result.error);
+  // Controllo automatico della disponibilità quando viene selezionata la data
+  useEffect(() => {
+    const checkRoomAvailabilityInfo = async () => {
+      if (!formData.date || !room?.id) {
+        setRoomAvailabilityInfo(null);
+        return;
       }
-    } catch {
-      setError('Errore durante la verifica della disponibilità');
-    } finally {
-      setCheckingAvailability(false);
+
+      setCheckingRoomInfo(true);
+      try {
+        const bookingsResult = await getRoomBookingsByDate(room.id, formData.date);
+        
+        if (bookingsResult.success) {
+          const availabilityInfo = analyzeRoomAvailability(bookingsResult.data);
+          setRoomAvailabilityInfo(availabilityInfo);
+        } else {
+          console.warn("Errore nel recupero prenotazioni:", bookingsResult.error);
+          setRoomAvailabilityInfo(null);
+        }
+      } catch (err) {
+        console.error("Errore nel controllo disponibilità stanza:", err);
+        setRoomAvailabilityInfo(null);
+      } finally {
+        setCheckingRoomInfo(false);
+      }
+    };
+
+    checkRoomAvailabilityInfo();
+  }, [formData.date, room?.id]);
+
+  // Aggiorna automaticamente startTime e endTime quando si seleziona una fascia oraria
+  useEffect(() => {
+    if (formData.timeSlot) {
+      const selectedSlot = TIME_SLOTS.find(slot => slot.id === formData.timeSlot);
+      if (selectedSlot) {
+        setFormData(prev => ({
+          ...prev,
+          startTime: selectedSlot.startTime,
+          endTime: selectedSlot.endTime
+        }));
+      }
     }
-  };
+  }, [formData.timeSlot]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     // Validazioni
-    if (!formData.date || !formData.startTime || !formData.endTime) {
-      setError('Tutti i campi obbligatori devono essere compilati');
-      return;
-    }
-
-    if (formData.startTime >= formData.endTime) {
-      setError('L\'orario di fine deve essere successivo a quello di inizio');
+    if (!formData.date || !formData.timeSlot) {
+      setError('Data e fascia oraria sono obbligatorie');
       return;
     }
 
@@ -84,9 +96,10 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
       const bookingData = {
         roomId: room.id,
         date: formData.date,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        purpose: formData.purpose.trim()
+        startTime: formData.startTime, // Popolato automaticamente dal timeSlot
+        endTime: formData.endTime,     // Popolato automaticamente dal timeSlot
+        purpose: formData.purpose.trim(),
+        corsoId: 1 // ID corso fisso
       };
 
       const result = await createBooking(bookingData);
@@ -154,105 +167,105 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
-            </div>
-
-            {/* Orari */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ora inizio <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.startTime}
-                  onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="">Seleziona...</option>
-                  {timeOptions.map(time => (
-                    <option key={time} value={time}>{time}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ora fine <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.endTime}
-                  onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="">Seleziona...</option>
-                  {timeOptions.map(time => (
-                    <option key={time} value={time}>{time}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Corso */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                ID Corso
-              </label>
-              <input
-                type="number"
-                value={formData.corsoId}
-                onChange={(e) => setFormData(prev => ({ ...prev, corsoId: e.target.value }))}
-                placeholder="1"
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">ID del corso per cui si prenota (default: 1)</p>
-            </div>
-
-            {/* Pulsante verifica disponibilità */}
-            {formData.date && formData.startTime && formData.endTime && (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleCheckAvailability}
-                  disabled={checkingAvailability}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                >
-                  {checkingAvailability ? (
-                    <div className="flex items-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Verificando...
-                    </div>
-                  ) : (
-                    'Verifica Disponibilità'
-                  )}
-                </button>
-              </div>
-            )}
-
-            {/* Risultato verifica disponibilità */}
-            {availabilityResult && (
-              <div className={`p-3 rounded-md ${availabilityResult.available ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-                <div className={`text-sm font-medium ${availabilityResult.available ? 'text-green-800' : 'text-red-800'}`}>
-                  {availabilityResult.available ? (
+              
+              {/* Avviso automatico disponibilità stanza */}
+              {checkingRoomInfo && (
+                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-700 text-xs">
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-2"></div>
+                    Controllo disponibilità...
+                  </div>
+                </div>
+              )}
+              
+              {roomAvailabilityInfo && formData.date && (
+                <div className={`mt-2 p-2 rounded text-xs ${
+                  roomAvailabilityInfo.status === 'free' ? 'bg-green-50 border border-green-200 text-green-700' :
+                  roomAvailabilityInfo.status === 'partial' ? 'bg-yellow-50 border border-yellow-200 text-yellow-700' :
+                  'bg-red-50 border border-red-200 text-red-700'
+                }`}>
+                  {roomAvailabilityInfo.status === 'free' && (
                     <div className="flex items-center">
                       <span className="text-green-600 mr-2 font-bold">✓</span>
-                      Stanza disponibile
+                      Stanza libera per tutta la giornata
                     </div>
-                  ) : (
+                  )}
+                  
+                  {roomAvailabilityInfo.status === 'partial' && (
+                    <div>
+                      <div className="flex items-center mb-2">
+                        <span className="text-yellow-600 mr-2 font-bold">⚠</span>
+                        <span className="font-medium">Disponibilità parziale</span>
+                      </div>
+                      
+                      {/* Mostra stato delle finestre temporali */}
+                      {roomAvailabilityInfo.timeSlots && (
+                        <div className="grid grid-cols-2 gap-1 mt-2">
+                          {Object.entries(roomAvailabilityInfo.timeSlots).map(([slotId, slot]) => (
+                            <div key={slotId} className={`text-center p-1 rounded text-xs ${
+                              slot.available 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              <div className="font-medium">
+                                {slotId === 'morning' ? 'Mattina' : 'Pomeriggio'}
+                              </div>
+                              <div className="text-xs">
+                                {slot.available ? '✓ Libera' : '✗ Occupata'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {roomAvailabilityInfo.status === 'full' && (
                     <div className="flex items-center">
                       <span className="text-red-600 mr-2 font-bold">×</span>
-                      Stanza non disponibile
+                      <span className="font-medium">{roomAvailabilityInfo.message}</span>
                     </div>
                   )}
                 </div>
-                {availabilityResult.message && (
-                  <p className={`text-xs mt-1 ${availabilityResult.available ? 'text-green-600' : 'text-red-600'}`}>
-                    {availabilityResult.message}
-                  </p>
-                )}
+              )}
+            </div>
+
+            {/* Fascia Oraria */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Fascia Oraria <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {TIME_SLOTS.map(slot => (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, timeSlot: slot.id }))}
+                    className={`p-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      formData.timeSlot === slot.id
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="font-semibold">{slot.label}</div>
+                    <div className="text-xs opacity-75">{slot.hours}</div>
+                  </button>
+                ))}
               </div>
-            )}
+              {formData.timeSlot && (
+                <div className="mt-2 text-sm text-gray-600">
+                  {TIME_SLOTS.find(s => s.id === formData.timeSlot)?.label}: {' '}
+                  {TIME_SLOTS.find(s => s.id === formData.timeSlot)?.hours}
+                </div>
+              )}
+            </div>
+
+            {/* Corso */}
+            {/* Rimosso campo corso per semplificare l'interfaccia */}
+
+            {/* Pulsante verifica disponibilità rimosso per semplificare l'interfaccia */}
+
+            {/* Risultato verifica disponibilità rimosso */}
 
             {/* Scopo */}
             <div>
@@ -281,7 +294,7 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
             </button>
             <button
               type="submit"
-              disabled={loading || !availabilityResult?.available}
+              disabled={loading}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -289,10 +302,8 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   Prenotando...
                 </div>
-              ) : availabilityResult?.available ? (
-                'Prenota'
               ) : (
-                'Verifica disponibilità prima'
+                'Prenota'
               )}
             </button>
           </div>

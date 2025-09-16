@@ -4,6 +4,14 @@ import { getAllBookings } from '../../services/bookingService';
 import { createBooking } from '../../services/bookingService';
 import { getCurrentUser } from '../../services/authService';
 
+// Funzione helper per convertire date senza problemi di fuso orario
+const formatDateLocal = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const WeeklyCalendar = () => {
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [rooms, setRooms] = useState([]);
@@ -88,7 +96,7 @@ const WeeklyCalendar = () => {
 
   // Verifica se uno slot è occupato
   const isSlotOccupied = (roomId, date, timeSlot) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = formatDateLocal(date);
     return bookings.some(booking => {
       if (booking.stato === 'ANNULLATA') return false;
       
@@ -109,7 +117,7 @@ const WeeklyCalendar = () => {
 
   // Trova la prenotazione per uno slot specifico
   const findBookingForSlot = (roomId, date, timeSlot) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = formatDateLocal(date);
     return bookings.find(booking => {
       if (booking.stato === 'ANNULLATA') return false;
       
@@ -180,7 +188,7 @@ const WeeklyCalendar = () => {
     // Se è libero, apri il modale di prenotazione
     setSelectedSlot({
       roomId,
-      date: date.toISOString().split('T')[0],
+      date: formatDateLocal(date),
       timeSlot,
       roomName: room?.nome || `Stanza ${roomId}`
     });
@@ -264,7 +272,7 @@ const WeeklyCalendar = () => {
           <span className="text-sm text-gray-600">Bloccata (clicca per motivo)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-gray-600 border border-gray-600 rounded"></div>
+          <div className="w-4 h-4 bg-gray-200 border border-gray-200 rounded"></div>
           <span className="text-sm text-gray-600">Data passata</span>
         </div>
       </div>
@@ -535,7 +543,10 @@ const SlotDetailsModal = ({ details, onClose }) => {
                 <div>
                   <strong className="text-gray-700">Motivazione:</strong>
                   <div className="mt-1 p-3 bg-gray-50 rounded-lg text-sm">
-                    {booking.purpose}
+                    <div className='text-gray-700'>
+                      {booking.purpose}
+
+                    </div>
                   </div>
                 </div>
               )}

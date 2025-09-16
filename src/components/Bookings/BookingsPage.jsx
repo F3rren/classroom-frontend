@@ -30,12 +30,12 @@ const BookingsPage = () => {
   const tabs = [
     { 
       id: 'calendar', 
-      label: 'Calendario Settimanale', 
+      label: 'Calendario Virtuale', 
       description: 'Vista calendario per prenotazioni rapide'
     },
     { 
       id: 'rooms', 
-      label: 'Cerca Stanze', 
+      label: 'Calendario Aule fisiche', 
       description: 'Visualizza e prenota le stanze disponibili'
     },
     { 

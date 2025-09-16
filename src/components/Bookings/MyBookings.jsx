@@ -114,16 +114,6 @@ const MyBookings = () => {
     loadBookings(); // Ricarica la lista
   };
 
-  const canCancel = (booking) => {
-    if (!booking || !booking.date) return false;
-    
-    const today = new Date();
-    const bookingDate = new Date(booking.date);
-    
-    // Può modificare solo se la prenotazione è futura
-    return bookingDate > today;
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return 'Data non disponibile';
     const date = new Date(dateString);
@@ -254,26 +244,24 @@ const MyBookings = () => {
                     </div>
                   </div>
 
-                  {canCancel(booking) && (
-                    <div className="ml-4 flex gap-2">
-                      {/* Pulsante modifica */}
-                      <button
-                        onClick={() => handleEditBooking(booking)}
-                        className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 border border-blue-300 rounded transition-colors"
-                      >
-                        Modifica
-                      </button>
-                      
-                      {/* Pulsante cancella */}
-                      <button
-                        onClick={() => handleCancelBooking(booking.id)}
-                        disabled={cancellingId === booking.id}
-                        className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 border border-red-300 rounded transition-colors disabled:opacity-50"
-                      >
-                        {cancellingId === booking.id ? 'Cancellando...' : 'Cancella'}
-                      </button>
-                    </div>
-                  )}
+                  <div className="ml-4 flex gap-2">
+                    {/* Pulsante modifica */}
+                    <button
+                      onClick={() => handleEditBooking(booking)}
+                      className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 border border-blue-300 rounded transition-colors"
+                    >
+                      Modifica
+                    </button>
+                    
+                    {/* Pulsante cancella */}
+                    <button
+                      onClick={() => handleCancelBooking(booking.id)}
+                      disabled={cancellingId === booking.id}
+                      className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 border border-red-300 rounded transition-colors disabled:opacity-50"
+                    >
+                      {cancellingId === booking.id ? 'Cancellando...' : 'Cancella'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

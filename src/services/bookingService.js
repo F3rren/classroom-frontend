@@ -1440,3 +1440,151 @@ export async function getAllBookings() {
     };
   }
 }
+
+// Funzione per ottenere le prenotazioni di una stanza per una data specifica
+export async function getRoomBookingsByDate(roomId, date) {
+  try {
+    if (!localStorage.getItem("token")) {
+      return {
+        success: false,
+        error: "Token mancante. Effettua il login.",
+        data: []
+      };
+    }
+
+    // Prima ottieni tutte le prenotazioni
+    const allBookingsResult = await getAllBookings();
+    
+    if (!allBookingsResult.success) {
+      // Se non è admin, prova con le proprie prenotazioni
+      const myBookingsResult = await getMyBookings();
+      if (!myBookingsResult.success) {
+        return {
+          success: false,
+          error: "Impossibile ottenere le prenotazioni",
+          data: []
+        };
+      }
+      
+      // Filtra le prenotazioni per stanza e data
+      const filteredBookings = myBookingsResult.data.filter(booking => {
+        const bookingRoomId = booking.roomId || booking.aulaId;
+        const bookingDate = booking.date;
+        return bookingRoomId == roomId && bookingDate === date;
+      });
+
+      return {
+        success: true,
+        error: null,
+        data: filteredBookings
+      };
+    }
+
+    // Se è admin, filtra tutte le prenotazioni
+    const filteredBookings = allBookingsResult.data.filter(booking => {
+      const bookingRoomId = booking.roomId || booking.aulaId;
+      const bookingDate = booking.date;
+      return bookingRoomId == roomId && bookingDate === date && 
+             (booking.status === 'active' || booking.stato === 'PRENOTATA');
+    });
+
+    console.log(`🔍 Prenotazioni trovate per stanza ${roomId} in data ${date}:`, filteredBookings);
+
+    return {
+      success: true,
+      error: null,
+      data: filteredBookings
+    };
+
+  } catch (err) {
+    console.error("Errore nel recupero prenotazioni per stanza/data:", err);
+    return {
+      success: false,
+      error: "Errore di connessione al server",
+      data: []
+    };
+  }
+}
+
+// Funzione per analizzare lo stato di disponibilità di una stanza in una data
+export function analyzeRoomAvailability(bookings) {
+  // Se non ci sono prenotazioni, la stanza è libera
+  if (!bookings || bookings.length === 0) {
+    return {
+      status: 'free', // libera
+      message: null,
+      occupiedPeriods: [],
+      timeSlots: {
+        morning: { available: true, label: 'Mattina (9:00-13:00)' },
+        afternoon: { available: true, label: 'Pomeriggio (14:00-18:00)' }
+      }
+    };
+  }
+
+  // Definisci le finestre temporali standard
+  const timeSlots = [
+    { id: 'morning', label: 'Mattina', startTime: '09:00', endTime: '13:00', hours: '9:00-13:00' },
+    { id: 'afternoon', label: 'Pomeriggio', startTime: '14:00', endTime: '18:00', hours: '14:00-18:00' }
+  ];
+
+  // Controlla disponibilità per ogni finestra temporale
+  const timeSlotAvailability = {};
+  timeSlots.forEach(slot => {
+    const hasConflict = bookings.some(booking => {
+      if (!booking.startTime || !booking.endTime) return false;
+      
+      const bookingStart = booking.startTime;
+      const bookingEnd = booking.endTime;
+      
+      // Verifica sovrapposizione con la finestra temporale
+      return (bookingStart < slot.endTime && bookingEnd > slot.startTime);
+    });
+    
+    timeSlotAvailability[slot.id] = {
+      available: !hasConflict,
+      label: `${slot.label} (${slot.hours})`
+    };
+  });
+
+  // Ordina le prenotazioni per orario di inizio
+  const sortedBookings = bookings
+    .filter(booking => booking.startTime && booking.endTime)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  const occupiedPeriods = sortedBookings.map(booking => ({
+    start: booking.startTime,
+    end: booking.endTime,
+    purpose: booking.purpose || booking.descrizione || 'Prenotazione'
+  }));
+
+  // Determina lo status generale
+  const availableSlots = Object.values(timeSlotAvailability).filter(slot => slot.available).length;
+  
+  if (availableSlots === 0) {
+    return {
+      status: 'full', // completamente occupata
+      message: 'Stanza non disponibile - tutte le fasce orarie occupate',
+      occupiedPeriods,
+      timeSlots: timeSlotAvailability
+    };
+  } else if (availableSlots === timeSlots.length) {
+    return {
+      status: 'free', // completamente libera
+      message: null,
+      occupiedPeriods,
+      timeSlots: timeSlotAvailability
+    };
+  } else {
+    // Parzialmente occupata
+    const occupiedSlots = Object.entries(timeSlotAvailability)
+      .filter(([, slot]) => !slot.available)
+      .map(([, slot]) => slot.label);
+    
+    return {
+      status: 'partial', // parzialmente occupata
+      message: `Fasce occupate: ${occupiedSlots.join(', ')}`,
+      occupiedPeriods,
+      timeSlots: timeSlotAvailability
+    };
+  }
+}
