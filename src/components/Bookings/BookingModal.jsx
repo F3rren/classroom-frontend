@@ -1,6 +1,53 @@
 import { useState, useEffect } from 'react';
 import { createBooking, getRoomBookingsByDate, analyzeRoomAvailability } from '../../services/bookingService';
 
+// Funzioni per la gestione intelligente degli errori
+const categorizeError = (error) => {
+  const errorMessage = error?.message || error || '';
+  
+  if (errorMessage.includes('token') || errorMessage.includes('unauthorized') || errorMessage.includes('forbidden')) {
+    return 'AUTH';
+  }
+  if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('connection')) {
+    return 'NETWORK';
+  }
+  if (errorMessage.includes('server') || errorMessage.includes('500') || errorMessage.includes('503')) {
+    return 'SERVER';
+  }
+  if (errorMessage.includes('conflict') || errorMessage.includes('already exists') || errorMessage.includes('già prenotata')) {
+    return 'CONFLICT';
+  }
+  if (errorMessage.includes('validation') || errorMessage.includes('required') || errorMessage.includes('invalid')) {
+    return 'VALIDATION';
+  }
+  return 'GENERIC';
+};
+
+const getEnhancedErrorMessage = (error, category) => {
+  const baseMessage = error?.message || error || 'Errore sconosciuto';
+  
+  switch (category) {
+    case 'AUTH':
+      return 'Sessione scaduta. Effettua nuovamente il login per continuare.';
+    case 'NETWORK':
+      return 'Problema di connessione. Verifica la tua connessione internet e riprova.';
+    case 'SERVER':
+      return 'Il server è temporaneamente non disponibile. Riprova tra qualche momento.';
+    case 'CONFLICT':
+      return 'La fascia oraria selezionata non è più disponibile. Scegli un altro orario.';
+    case 'VALIDATION':
+      if (baseMessage.includes('Data')) return 'Seleziona una data valida per la prenotazione.';
+      if (baseMessage.includes('orario')) return 'Seleziona una fascia oraria valida.';
+      return 'Controlla che tutti i campi obbligatori siano compilati correttamente.';
+    default:
+      return baseMessage.includes('prenotazione') ? baseMessage : `Si è verificato un errore: ${baseMessage}`;
+  }
+};
+
+const isRetryableError = (category) => {
+  return ['NETWORK', 'SERVER'].includes(category);
+};
+
 // Funzione helper per convertire date senza problemi di fuso orario
 const formatDateLocal = (date) => {
   const year = date.getFullYear();
@@ -27,6 +74,8 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
   const [error, setError] = useState(null);
   const [roomAvailabilityInfo, setRoomAvailabilityInfo] = useState(null);
   const [checkingRoomInfo, setCheckingRoomInfo] = useState(false);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Imposta data minima (oggi)
   const today = formatDateLocal(new Date());
@@ -45,22 +94,51 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
       }
 
       setCheckingRoomInfo(true);
-      try {
-        const bookingsResult = await getRoomBookingsByDate(room.id, formData.date);
-        
-        if (bookingsResult.success) {
-          const availabilityInfo = analyzeRoomAvailability(bookingsResult.data);
-          setRoomAvailabilityInfo(availabilityInfo);
-        } else {
-          console.warn("Errore nel recupero prenotazioni:", bookingsResult.error);
-          setRoomAvailabilityInfo(null);
+      setError(null);
+      
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          const bookingsResult = await getRoomBookingsByDate(room.id, formData.date);
+          
+          if (bookingsResult.success) {
+            const availabilityInfo = analyzeRoomAvailability(bookingsResult.data);
+            setRoomAvailabilityInfo(availabilityInfo);
+            setCheckingRoomInfo(false);
+            return;
+          } else {
+            const errorType = categorizeError(bookingsResult.error);
+            const enhancedMessage = getEnhancedErrorMessage(bookingsResult.error, errorType);
+            
+            if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+              attempts++;
+              await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+              continue;
+            } else {
+              setError(enhancedMessage);
+              setRoomAvailabilityInfo(null);
+              break;
+            }
+          }
+        } catch (error) {
+          const errorType = categorizeError(error.message);
+          const enhancedMessage = getEnhancedErrorMessage(error.message, errorType);
+          
+          if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+            continue;
+          } else {
+            setError(enhancedMessage);
+            setRoomAvailabilityInfo(null);
+            break;
+          }
         }
-      } catch (err) {
-        console.error("Errore nel controllo disponibilità stanza:", err);
-        setRoomAvailabilityInfo(null);
-      } finally {
-        setCheckingRoomInfo(false);
       }
+      
+      setCheckingRoomInfo(false);
     };
 
     checkRoomAvailabilityInfo();
@@ -85,34 +163,89 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
     
     // Validazioni
     if (!formData.date || !formData.timeSlot) {
-      setError('Data e fascia oraria sono obbligatorie');
+      const errorType = 'VALIDATION';
+      const enhancedMessage = getEnhancedErrorMessage('Data e fascia oraria sono obbligatorie', errorType);
+      setError(enhancedMessage);
       return;
     }
 
     setLoading(true);
     setError(null);
+    setRetryAttempts(0);
 
-    try {
-      const bookingData = {
-        roomId: room.id,
-        date: formData.date,
-        startTime: formData.startTime, // Popolato automaticamente dal timeSlot
-        endTime: formData.endTime,     // Popolato automaticamente dal timeSlot
-        purpose: formData.purpose.trim(),
-        corsoId: 1 // ID corso fisso
-      };
+    let attempts = 0;
+    const maxAttempts = 3;
 
-      const result = await createBooking(bookingData);
+    while (attempts < maxAttempts) {
+      try {
+        if (attempts > 0) {
+          setIsRetrying(true);
+          setRetryAttempts(attempts);
+        }
 
-      if (result.success) {
-        onSuccess();
-      } else {
-        setError(result.error);
+        const bookingData = {
+          roomId: room.id,
+          date: formData.date,
+          startTime: formData.startTime, // Popolato automaticamente dal timeSlot
+          endTime: formData.endTime,     // Popolato automaticamente dal timeSlot
+          purpose: formData.purpose.trim(),
+          corsoId: 1 // ID corso fisso
+        };
+
+        const result = await createBooking(bookingData);
+
+        if (result.success) {
+          setIsRetrying(false);
+          onSuccess();
+          return;
+        } else {
+          const errorType = categorizeError(result.error);
+          const enhancedMessage = getEnhancedErrorMessage(result.error, errorType);
+          
+          if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+            continue;
+          } else {
+            setError(enhancedMessage);
+            break;
+          }
+        }
+      } catch (error) {
+        const errorType = categorizeError(error.message);
+        const enhancedMessage = getEnhancedErrorMessage(error.message, errorType);
+        
+        if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+          continue;
+        } else {
+          setError(enhancedMessage);
+          break;
+        }
       }
-    } catch {
-      setError('Errore durante la creazione della prenotazione');
-    } finally {
-      setLoading(false);
+    }
+    
+    setLoading(false);
+    setIsRetrying(false);
+    setRetryAttempts(0);
+  };
+
+  const retryOperation = () => {
+    setError(null);
+    setRetryAttempts(0);
+    setIsRetrying(false);
+    
+    // Se c'è una data selezionata, ricontrolla la disponibilità
+    if (formData.date && room?.id) {
+      setCheckingRoomInfo(true);
+      setRoomAvailabilityInfo(null);
+      
+      // Trigger del useEffect per ricaricare le informazioni della stanza
+      const checkRoomAvailabilityInfo = async () => {
+        // Il codice sarà gestito dal useEffect
+      };
+      checkRoomAvailabilityInfo();
     }
   };
 
@@ -137,17 +270,7 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
         {/* Informazioni stanza */}
         <div className="px-6 py-3 bg-gray-50 border-b flex-shrink-0">
           <h4 className="font-medium text-gray-900">
-            {(() => {
-              const roomName = room.name || room.nome || `Stanza ${room.id}`;
-              console.log('🏠 BookingModal debug - Room object:', { 
-                id: room.id, 
-                name: room.name, 
-                nome: room.nome,
-                displayName: roomName,
-                fullRoom: room 
-              });
-              return roomName;
-            })()}
+            {room.name || room.nome || `Stanza ${room.id}`}
           </h4>
           <div className="text-sm text-gray-600 mt-1">
             <span>Piano {room.floor || room.piano}</span>
@@ -160,8 +283,30 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6">
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-              {error}
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start">
+                <div className="text-red-600 text-xl mr-3 flex-shrink-0">🚫</div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-red-800 mb-1">Errore nella prenotazione</h4>
+                  <p className="text-red-700 text-sm mb-3">{error}</p>
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      onClick={retryOperation}
+                      className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
+                    >
+                      Riprova
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setError(null)}
+                      className="text-red-600 px-3 py-1 rounded text-sm border border-red-300 hover:bg-red-50 transition-colors"
+                    >
+                      Chiudi
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -312,7 +457,11 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
               {loading ? (
                 <div className="flex items-center justify-center">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Prenotando...
+                  {isRetrying ? (
+                    <span>Tentativo {retryAttempts}/3...</span>
+                  ) : (
+                    <span>Prenotando...</span>
+                  )}
                 </div>
               ) : (
                 'Prenota'

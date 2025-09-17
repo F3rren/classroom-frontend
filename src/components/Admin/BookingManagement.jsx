@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getAllBookings, deleteBookingAsAdmin } from '../../services/bookingService';
 import EditBookingModal from '../Bookings/EditBookingModal';
 
-const BookingManagement = ({ currentUser }) => {
+const BookingManagement = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -11,40 +11,96 @@ const BookingManagement = ({ currentUser }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [retryAttempts, setRetryAttempts] = useState(0);
 
-  console.log("🔄 BookingManagement - Current state:", { 
-    bookings, 
-    loading, 
-    error, 
-    isBookingsArray: Array.isArray(bookings),
-    currentUser
-  });
+  // Funzioni di supporto per la gestione degli errori
+  const categorizeError = (errorMessage) => {
+    if (errorMessage?.includes('autorizzazione') || errorMessage?.includes('token')) {
+      return 'AUTH';
+    }
+    if (errorMessage?.includes('connessione') || errorMessage?.includes('rete') || errorMessage?.includes('fetch')) {
+      return 'NETWORK';
+    }
+    if (errorMessage?.includes('server') || errorMessage?.includes('500')) {
+      return 'SERVER';
+    }
+    return 'GENERIC';
+  };
+
+  const getEnhancedErrorMessage = (originalError, errorType) => {
+    switch (errorType) {
+      case 'AUTH':
+        return "Sessione scaduta. Effettua nuovamente il login per continuare.";
+      case 'NETWORK':
+        return "Problema di connessione. Controlla la tua connessione internet e riprova.";
+      case 'SERVER':
+        return "Errore del server. Il problema è temporaneo, riprova tra qualche momento.";
+      default:
+        return originalError || "Si è verificato un errore imprevisto. Riprova più tardi.";
+    }
+  };
+
+  const isRetryableError = (errorType) => {
+    return errorType === 'NETWORK' || errorType === 'SERVER';
+  };
 
   const loadBookings = async () => {
-    console.log(`📋 Caricando tutte le prenotazioni (admin)`);
+    const maxRetries = 3;
+    let currentRetry = 0;
     
-    const result = await getAllBookings();
-    
-    if (result.success) {
-      // Assicurati che i dati siano sempre un array
-      const allBookingsData = Array.isArray(result.data) ? result.data : [];
-      console.log("📋 Tutte le prenotazioni caricate:", allBookingsData);
-      console.log("📋 Stati prenotazioni:", allBookingsData.map(b => ({ id: b.id, stato: b.stato, userName: b.userName })));
-      
-      // Per gli admin, mostra tutte le prenotazioni (incluse quelle annullate)
-      // ma le filtra per stato se necessario
-      setBookings(allBookingsData);
-      setError(null);
-    } else {
-      setError(result.error);
-      setBookings([]); // Reset a array vuoto in caso di errore
+    while (currentRetry <= maxRetries) {
+      try {
+        setError(null);
+        
+        const result = await getAllBookings();
+        
+        if (result.success) {
+          // Assicurati che i dati siano sempre un array
+          const allBookingsData = Array.isArray(result.data) ? result.data : [];
+          
+          // Per gli admin, mostra tutte le prenotazioni (incluse quelle annullate)
+          setBookings(allBookingsData);
+          setError(null);
+          break;
+        } else {
+          const errorType = categorizeError(result.error);
+          
+          if (isRetryableError(errorType) && currentRetry < maxRetries) {
+            currentRetry++;
+            setRetryAttempts(currentRetry);
+            const delay = 1000 * currentRetry; // Backoff lineare
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          } else {
+            setError(getEnhancedErrorMessage(result.error, errorType));
+            setBookings([]); // Reset a array vuoto in caso di errore
+            break;
+          }
+        }
+      } catch (err) {
+        const errorType = categorizeError(err.message);
+        
+        if (isRetryableError(errorType) && currentRetry < maxRetries) {
+          currentRetry++;
+          setRetryAttempts(currentRetry);
+          const delay = 1000 * currentRetry;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        } else {
+          setError(getEnhancedErrorMessage(err.message, errorType));
+          setBookings([]);
+          break;
+        }
+      }
     }
+    
     setLoading(false);
+    setRetryAttempts(0);
   };
 
   useEffect(() => {
     loadBookings();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleEditBooking = (booking) => {
     setEditingBooking(booking);
@@ -55,23 +111,22 @@ const BookingManagement = ({ currentUser }) => {
       return;
     }
 
-    console.log("🗑️ Eliminando prenotazione (admin):", bookingId);
     setDeletingId(bookingId);
 
     try {
       const result = await deleteBookingAsAdmin(bookingId);
-      console.log("🗑️ Risultato eliminazione:", result);
       
       if (result.success) {
         setSuccessMessage('Prenotazione eliminata con successo');
         setTimeout(() => setSuccessMessage(''), 3000);
         loadBookings(); // Ricarica la lista
       } else {
-        setError(result.error || 'Errore durante l\'eliminazione della prenotazione');
+        const errorType = categorizeError(result.error);
+        setError(getEnhancedErrorMessage(result.error, errorType));
       }
     } catch (err) {
-      console.error("🚨 Errore eliminazione prenotazione:", err);
-      setError('Errore di rete durante l\'eliminazione della prenotazione');
+      const errorType = categorizeError(err.message);
+      setError(getEnhancedErrorMessage(err.message, errorType));
     } finally {
       setDeletingId(null);
     }
@@ -152,8 +207,17 @@ const BookingManagement = ({ currentUser }) => {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600">Caricamento prenotazioni...</span>
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <span className="text-gray-600">
+            Caricamento prenotazioni...
+            {retryAttempts > 0 && (
+              <span className="block text-sm text-gray-400">
+                Tentativo {retryAttempts}/3
+              </span>
+            )}
+          </span>
+        </div>
       </div>
     );
   }
@@ -198,16 +262,27 @@ const BookingManagement = ({ currentUser }) => {
 
       {/* Errore */}
       {error && (
-        <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-          <div>
-            <p className="font-bold">Errore nel caricamento delle prenotazioni</p>
-            <p className="text-sm">{error}</p>
-            <button 
-              onClick={loadBookings}
-              className="mt-2 text-sm underline"
-            >
-              Riprova
-            </button>
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-6">
+          <div className="flex items-start">
+            <div className="text-red-600 text-xl mr-3">⚠️</div>
+            <div className="flex-1">
+              <h3 className="font-bold text-red-800 mb-2">Errore nel caricamento delle prenotazioni</h3>
+              <p className="text-red-700 mb-4">{error}</p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={loadBookings}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Riprova
+                </button>
+                <button 
+                  onClick={() => setError(null)}
+                  className="text-red-600 px-4 py-2 rounded-lg border border-red-300 hover:bg-red-50 transition-colors"
+                >
+                  Chiudi
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -8,41 +8,148 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // Funzioni di supporto per la gestione degli errori
+  const categorizeError = (errorMessage) => {
+    if (errorMessage.includes('troppi tentativi') || errorMessage.includes('rate limit')) {
+      return 'RATE_LIMIT';
+    }
+    if (errorMessage.includes('connessione') || errorMessage.includes('rete')) {
+      return 'NETWORK';
+    }
+    if (errorMessage.includes('password') || errorMessage.includes('email')) {
+      return 'CREDENTIALS';
+    }
+    if (errorMessage.includes('server') || errorMessage.includes('500')) {
+      return 'SERVER';
+    }
+    return 'GENERIC';
+  };
+
+  const getEnhancedErrorMessage = (originalError, errorType) => {
+    switch (errorType) {
+      case 'CREDENTIALS':
+        return `${originalError} Assicurati che i dati siano corretti.`;
+      case 'RATE_LIMIT':
+        return `${originalError} Per la tua sicurezza, attendi prima di riprovare.`;
+      case 'NETWORK':
+        return `${originalError} Controlla la tua connessione internet.`;
+      case 'SERVER':
+        return `${originalError} Il problema è temporaneo, riprova tra qualche minuto.`;
+      default:
+        return originalError;
+    }
+  };
+
+  const isRetryableError = (error) => {
+    return error.name === 'TypeError' || 
+           error.message.includes('fetch') ||
+           error.message.includes('network');
+  };
   
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     
-    try {
-      const loginResult = await authLogin(email, password);
-      
-      if (loginResult.success) {
-        // Dopo il login, ottieni i dati dell'utente per il redirect appropriato
-        const userResult = await getCurrentUser();
+    // 1. Validazione client-side migliorata
+    if (!email.trim()) {
+      setError("L'email è obbligatoria");
+      setLoading(false);
+      return;
+    }
+    
+    if (!password.trim()) {
+      setError("La password è obbligatoria");
+      setLoading(false);
+      return;
+    }
+    
+    if (password.length < 6) {
+      setError("La password deve essere di almeno 6 caratteri");
+      setLoading(false);
+      return;
+    }
+
+    // 2. Retry automatico con backoff esponenziale
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        const loginResult = await authLogin(email.trim(), password);
         
-        if (userResult && userResult.success) {
-          const user = userResult.data;
-          
-          // Redirect basato sul ruolo
-          if (user.ruolo === 'admin') {
-            navigate('/dashboard/adminpanel');
-          } else {
-            navigate('/dashboard/user');
+        if (loginResult.success) {
+          // 3. Gestione migliorata del getCurrentUser con fallback
+          try {
+            const userResult = await getCurrentUser();
+            
+            if (userResult?.success && userResult?.data) {
+              const user = userResult.data;
+              
+              // Redirect intelligente basato sul ruolo
+              const redirectPath = user.ruolo === 'admin' 
+                ? '/dashboard/adminpanel' 
+                : '/dashboard/user';
+              
+              navigate(redirectPath, { replace: true });
+              return;
+            } else {
+              // Fallback: vai alla home ma avvisa l'utente
+              navigate('/', { 
+                replace: true,
+                state: { 
+                  message: "Login effettuato, ma alcuni dati potrebbero non essere disponibili" 
+                }
+              });
+              return;
+            }
+          } catch {
+            // Se getCurrentUser fallisce, vai comunque alla home
+            navigate('/', { 
+              replace: true,
+              state: { 
+                message: "Login effettuato con successo" 
+              }
+            });
+            return;
           }
         } else {
-          // Se non riesco a ottenere i dati utente, vai alla home
-          navigate('/');
+          // 4. Categorizzazione degli errori
+          const errorType = categorizeError(loginResult.error);
+          
+          if (errorType === 'RATE_LIMIT' && retryCount < maxRetries) {
+            // Per rate limiting, riprova dopo un delay
+            retryCount++;
+            const delay = Math.pow(2, retryCount) * 1000; // Backoff esponenziale
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          } else if (errorType === 'NETWORK' && retryCount < maxRetries) {
+            // Per errori di rete, riprova
+            retryCount++;
+            const delay = 1000 * retryCount;
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          } else {
+            // Errore definitivo o troppi tentativi
+            setError(getEnhancedErrorMessage(loginResult.error, errorType));
+            break;
+          }
         }
-      } else {
-        setError(loginResult.error);
+      } catch (error) {
+        if (retryCount < maxRetries && isRetryableError(error)) {
+          retryCount++;
+          const delay = 1000 * retryCount;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        } else {
+          setError("Si è verificato un errore imprevisto. Riprova più tardi.");
+          break;
+        }
       }
-    } catch (err) {
-      console.error('Errore durante il login:', err);
-      setError('Errore durante il login. Riprova.');
-    } finally {
-      setLoading(false);
     }
+    
+    setLoading(false);
   };
 
   return (

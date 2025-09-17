@@ -9,6 +9,44 @@ import ApiStatusIndicator from "../Common/ApiStatusIndicator";
 import ApiDebugger from "../Common/ApiDebugger";
 import ProxyTest from "../test/ProxyTest";
 
+// Sistema di gestione errori intelligente
+const categorizeError = (error) => {
+  if (error.response?.status === 401 || error.message?.includes('non autorizzato')) {
+    return 'AUTH';
+  }
+  if (!navigator.onLine || error.code === 'NETWORK_ERROR' || error.message?.includes('fetch')) {
+    return 'NETWORK';
+  }
+  if (error.response?.status >= 500) {
+    return 'SERVER';
+  }
+  if (error.response?.status === 409) {
+    return 'CONFLICT';
+  }
+  if (error.response?.status === 400) {
+    return 'VALIDATION';
+  }
+  return 'GENERIC';
+};
+
+const getEnhancedErrorMessage = (error, operation = '') => {
+  const category = categorizeError(error);
+  const baseMessages = {
+    'AUTH': 'Sessione scaduta. Effettua nuovamente il login.',
+    'NETWORK': 'Connessione internet non disponibile. Riprova quando torni online.',
+    'SERVER': 'Problema temporaneo del server. Stiamo lavorando per risolverlo.',
+    'CONFLICT': operation === 'load' ? 'Conflitto durante il caricamento delle stanze.' : 'Operazione non possibile per conflitto con altri dati.',
+    'VALIDATION': operation === 'load' ? 'Dati non validi ricevuti dal server.' : 'I dati forniti non sono validi.',
+    'GENERIC': operation === 'load' ? 'Impossibile caricare le stanze. Verifica la connessione al database.' : operation === 'users' ? 'Errore nel caricamento degli utenti.' : 'Si è verificato un errore imprevisto.'
+  };
+  return baseMessages[category] || 'Errore sconosciuto';
+};
+
+const isRetryableError = (error) => {
+  const category = categorizeError(error);
+  return ['NETWORK', 'SERVER'].includes(category);
+};
+
 export default function RoomGrid({ user }) {
   // Usa il hook personalizzato per le stanze
   const { 
@@ -28,6 +66,46 @@ export default function RoomGrid({ user }) {
   const [selectedCapacity, setSelectedCapacity] = useState("all");
   const [selectedFloor, setSelectedFloor] = useState("all");
   const [availability, setAvailability] = useState("all");
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+  const [operationType, setOperationType] = useState(null);
+  const [usersError, setUsersError] = useState(null);
+
+  // Funzione di retry
+  const retryOperation = async (operation, maxAttempts = 3) => {
+    setIsRetrying(true);
+    setRetryAttempts(0);
+    setError('');
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        setRetryAttempts(attempt);
+        const result = await operation();
+        setIsRetrying(false);
+        setRetryAttempts(0);
+        setOperationType(null);
+        return result;
+      } catch (error) {
+        if (attempt === maxAttempts) {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+        
+        if (isRetryableError(error)) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+        } else {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+      }
+    }
+  };
 
   // Effetto per gestire i dati delle stanze dal hook
   useEffect(() => {
@@ -47,26 +125,27 @@ export default function RoomGrid({ user }) {
     // Se l'utente è admin, prova a ottenere dati più dettagliati
     const loadRoomsForUser = async () => {
       if (user?.role === "admin" || user?.ruolo === "admin") {
+        setOperationType('load');
+        
         try {
-          console.log("🔄 Caricamento dati admin con prenotazioni...");
-          const result = await getRoomsWithBookings();
-          
-          if (result.success && result.data?.length > 0) {
-            setRooms(result.data);
-            setHasBookingSupport(result.hasBookingSupport || false);
-            console.log("✅ Dati admin caricati:", {
-              count: result.data.length,
-              hasBookingSupport: result.hasBookingSupport
-            });
-          } else {
-            // Fallback ai dati base dall'hook
-            setRooms(allRooms);
-            setHasBookingSupport(allRooms.some(room => 
-              room.bookings && room.bookings.length > 0
-            ));
-          }
-        } catch (err) {
-          console.warn("⚠️ Errore caricamento dati admin, uso dati base:", err);
+          await retryOperation(async () => {
+            const result = await getRoomsWithBookings();
+            
+            if (result.success && result.data?.length > 0) {
+              setRooms(result.data);
+              setHasBookingSupport(result.hasBookingSupport || false);
+              return result;
+            } else {
+              // Fallback ai dati base dall'hook
+              setRooms(allRooms);
+              setHasBookingSupport(allRooms.some(room => 
+                room.bookings && room.bookings.length > 0
+              ));
+              return { data: allRooms };
+            }
+          });
+        } catch {
+          // Fallback ai dati base dall'hook in caso di errore
           setRooms(allRooms);
           setHasBookingSupport(false);
         }
@@ -78,7 +157,6 @@ export default function RoomGrid({ user }) {
         ));
       }
       
-      setError(null);
       setLoading(false);
     };
 
@@ -90,24 +168,36 @@ export default function RoomGrid({ user }) {
     if (user?.role !== "admin" && user?.ruolo !== "admin") return;
     
     const fetchUsers = async () => {
+      setOperationType('users');
+      
       try {
-        const token = localStorage.getItem("token");
-        if (!token) return;
+        await retryOperation(async () => {
+          const token = localStorage.getItem("token");
+          if (!token) {
+            throw new Error('Token non disponibile');
+          }
 
-        const response = await fetch("http://localhost:8080/api/admin/users", {
-          method: "GET",
-          headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-        });
-        
-        if (response.ok) {
+          const response = await fetch("http://localhost:8080/api/admin/users", {
+            method: "GET",
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Errore HTTP: ${response.status}`);
+          }
+          
           const data = await response.json();
           setUsers(data.users || data);
-        }
-      } catch (err) {
-        console.error("Errore nel caricamento degli utenti:", err);
+          setUsersError(null);
+          
+          return data;
+        });
+      } catch {
+        // Errore già gestito in retryOperation
+        setUsersError('Errore nel caricamento degli utenti');
       }
     };
 
@@ -217,26 +307,35 @@ export default function RoomGrid({ user }) {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-start">
             <div className="flex-shrink-0">
-              <div className="w-5 h-5 bg-red-400 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-bold">!</span>
-              </div>
+              <svg className="h-5 w-5 text-red-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
             </div>
             <div className="ml-3 flex-1">
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-sm text-red-700">
                     <span className="font-medium">Errore di connessione:</span> {error}
-                    <span className="block mt-1 text-xs">
-                      Verifica che il backend sia avviato su <code className="bg-red-200 px-1 rounded">localhost:8080</code> e che l'endpoint <code className="bg-red-200 px-1 rounded">/api/rooms/detailed</code> sia implementato.
-                    </span>
                   </p>
+                  {isRetrying && operationType === 'load' && (
+                    <p className="text-xs text-red-600 mt-1">
+                      Tentativo {retryAttempts} di 3 in corso...
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={handleRefreshRooms}
-                  disabled={loading}
-                  className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50"
+                  disabled={loading || isRetrying}
+                  className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
-                  🔄 Riprova
+                  {loading || (isRetrying && operationType === 'load') ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-600 mr-1"></div>
+                      Riprovando...
+                    </>
+                  ) : (
+                    <>🔄 Riprova</>
+                  )}
                 </button>
               </div>
             </div>
@@ -265,7 +364,10 @@ export default function RoomGrid({ user }) {
           {loading && (
             <div className="inline-flex items-center text-blue-600 text-xs">
               <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600 mr-1"></div>
-              Caricamento...
+              {isRetrying && operationType === 'load' ? 
+                `Tentativo ${retryAttempts}/3...` : 
+                'Caricamento...'
+              }
             </div>
           )}
         </div>
@@ -278,8 +380,13 @@ export default function RoomGrid({ user }) {
       {loading && rooms.length === 0 && (
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Caricamento stanze...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p className="text-gray-600">
+              {isRetrying && operationType === 'load' ? 
+                `Caricamento stanze (tentativo ${retryAttempts}/3)...` : 
+                'Caricamento stanze...'
+              }
+            </p>
           </div>
         </div>
       )}
@@ -328,9 +435,17 @@ export default function RoomGrid({ user }) {
             {error && (
               <button
                 onClick={handleRefreshRooms}
-                className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                disabled={loading || isRetrying}
+                className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center mx-auto"
               >
-                🔄 Riprova connessione
+                {loading || (isRetrying && operationType === 'load') ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Riprovando...
+                  </>
+                ) : (
+                  <>🔄 Riprova connessione</>
+                )}
               </button>
             )}
           </div>

@@ -3,6 +3,46 @@ import { getMyBookings, deleteBooking } from '../../services/bookingService';
 import { getCurrentUser } from '../../services/authService';
 import EditBookingModal from './EditBookingModal';
 
+// Funzioni per la gestione intelligente degli errori
+const categorizeError = (error) => {
+  const errorMessage = error?.message || error || '';
+  
+  if (errorMessage.includes('token') || errorMessage.includes('unauthorized') || errorMessage.includes('forbidden')) {
+    return 'AUTH';
+  }
+  if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('connection')) {
+    return 'NETWORK';
+  }
+  if (errorMessage.includes('server') || errorMessage.includes('500') || errorMessage.includes('503')) {
+    return 'SERVER';
+  }
+  if (errorMessage.includes('not found') || errorMessage.includes('404')) {
+    return 'NOT_FOUND';
+  }
+  return 'GENERIC';
+};
+
+const getEnhancedErrorMessage = (error, category) => {
+  const baseMessage = error?.message || error || 'Errore sconosciuto';
+  
+  switch (category) {
+    case 'AUTH':
+      return 'Sessione scaduta. Effettua nuovamente il login per visualizzare le tue prenotazioni.';
+    case 'NETWORK':
+      return 'Problema di connessione. Verifica la tua connessione internet e riprova.';
+    case 'SERVER':
+      return 'Il server è temporaneamente non disponibile. Riprova tra qualche momento.';
+    case 'NOT_FOUND':
+      return 'Non sono state trovate prenotazioni per il tuo account.';
+    default:
+      return baseMessage.includes('prenotazioni') ? baseMessage : `Errore nel caricamento delle prenotazioni: ${baseMessage}`;
+  }
+};
+
+const isRetryableError = (category) => {
+  return ['NETWORK', 'SERVER'].includes(category);
+};
+
 const MyBookings = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,65 +51,151 @@ const MyBookings = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [operationType, setOperationType] = useState(''); // 'load', 'delete'
 
-  console.log("🔄 MyBookings - Current state:", { 
-    bookings, 
-    loading, 
-    error, 
-    isBookingsArray: Array.isArray(bookings),
-    currentUser
-  });
-
-  const loadBookings = async () => {
-    console.log(`📋 Caricando le mie prenotazioni personali`);
-    
-    // Carica sempre solo le proprie prenotazioni (non admin mode)
-    const result = await getMyBookings();
-    
-    if (result.success) {
-      // Assicurati che i dati siano sempre un array
-      const allBookingsData = Array.isArray(result.data) ? result.data : [];
-      console.log("📋 Le mie prenotazioni caricate:", allBookingsData);
-      console.log("📋 Stati prenotazioni:", allBookingsData.map(b => ({ id: b.id, stato: b.stato, userName: b.userName })));
-      
-      // Filtra solo le prenotazioni attive (non annullate)
-      const activeBookings = allBookingsData.filter(booking => {
-        const isActive = booking.stato !== 'ANNULLATA';
-        console.log(`📋 Prenotazione ${booking.id} - Stato: "${booking.stato}" - Attiva: ${isActive}`);
-        return isActive;
-      });
-      console.log("📋 Le mie prenotazioni filtrate (attive):", activeBookings);
-      
-      setBookings(activeBookings);
+  const loadBookings = async (isRetryAttempt = false) => {
+    if (!isRetryAttempt) {
+      setLoading(true);
       setError(null);
-    } else {
-      setError(result.error);
-      setBookings([]); // Reset a array vuoto in caso di errore
+      setRetryAttempts(0);
+      setIsRetrying(false);
+      setOperationType('load');
     }
+
+    let attempts = isRetryAttempt ? retryAttempts : 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        if (attempts > 0) {
+          setIsRetrying(true);
+          setRetryAttempts(attempts);
+        }
+
+        // Carica sempre solo le proprie prenotazioni (non admin mode)
+        const result = await getMyBookings();
+        
+        if (result.success) {
+          // Assicurati che i dati siano sempre un array
+          const allBookingsData = Array.isArray(result.data) ? result.data : [];
+          
+          // Filtra solo le prenotazioni attive (non annullate)
+          const activeBookings = allBookingsData.filter(booking => {
+            return booking.stato !== 'ANNULLATA';
+          });
+          
+          setBookings(activeBookings);
+          setError(null);
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setLoading(false);
+          return;
+        } else {
+          const errorType = categorizeError(result.error);
+          const enhancedMessage = getEnhancedErrorMessage(result.error, errorType);
+          
+          if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+            continue;
+          } else {
+            setError(enhancedMessage);
+            setBookings([]); // Reset a array vuoto in caso di errore
+            break;
+          }
+        }
+      } catch (err) {
+        const errorType = categorizeError(err.message);
+        const enhancedMessage = getEnhancedErrorMessage(err.message, errorType);
+        
+        if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+          continue;
+        } else {
+          setError(enhancedMessage);
+          setBookings([]);
+          break;
+        }
+      }
+    }
+    
     setLoading(false);
+    setIsRetrying(false);
+    setRetryAttempts(0);
   };
 
   useEffect(() => {
     const initializeComponent = async () => {
       setLoading(true);
+      setError(null);
+      setRetryAttempts(0);
+      setIsRetrying(false);
       
-      // Prima carica l'utente corrente
-      const userResult = await getCurrentUser();
-      if (userResult && userResult.success) {
-        setCurrentUser(userResult.data);
-        console.log("👤 Utente caricato:", userResult.data);
-      } else {
-        console.error("❌ Errore caricamento utente:", userResult);
-        setError("Errore nel caricamento del profilo utente");
-        setLoading(false);
-        return;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          if (attempts > 0) {
+            setIsRetrying(true);
+            setRetryAttempts(attempts);
+          }
+          
+          // Prima carica l'utente corrente
+          const userResult = await getCurrentUser();
+          
+          if (userResult === null) {
+            // Utente non autenticato - sarà gestito da ProtectedRoute
+            setLoading(false);
+            return;
+          }
+          
+          if (userResult && userResult.success) {
+            setCurrentUser(userResult.data);
+            
+            // Carica sempre solo le proprie prenotazioni
+            await loadBookings(false);
+            setIsRetrying(false);
+            setRetryAttempts(0);
+            return;
+          } else {
+            const errorType = categorizeError(userResult?.error);
+            const enhancedMessage = getEnhancedErrorMessage(userResult?.error, errorType);
+            
+            if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+              attempts++;
+              await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+              continue;
+            } else {
+              setError(enhancedMessage);
+              break;
+            }
+          }
+        } catch (err) {
+          const errorType = categorizeError(err.message);
+          const enhancedMessage = getEnhancedErrorMessage(err.message, errorType);
+          
+          if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+            continue;
+          } else {
+            setError(enhancedMessage);
+            break;
+          }
+        }
       }
       
-      // Carica sempre solo le proprie prenotazioni
-      await loadBookings();
+      setLoading(false);
+      setIsRetrying(false);
+      setRetryAttempts(0);
     };
     
     initializeComponent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleEditBooking = (booking) => {
@@ -81,26 +207,62 @@ const MyBookings = () => {
       return;
     }
 
-    console.log("🗑️ Cancellando prenotazione personale:", bookingId);
     setCancellingId(bookingId);
+    setOperationType('delete');
+    setRetryAttempts(0);
+    setIsRetrying(false);
 
-    try {
-      const result = await deleteBooking(bookingId);
-      console.log("🗑️ Risultato cancellazione:", result);
-      
-      if (result.success) {
-        setSuccessMessage('Prenotazione cancellata con successo');
-        setTimeout(() => setSuccessMessage(''), 3000);
-        loadBookings(); // Ricarica la lista
-      } else {
-        setError(result.error || 'Errore durante la cancellazione della prenotazione');
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        if (attempts > 0) {
+          setIsRetrying(true);
+          setRetryAttempts(attempts);
+        }
+
+        const result = await deleteBooking(bookingId);
+        
+        if (result.success) {
+          setSuccessMessage('Prenotazione cancellata con successo');
+          setTimeout(() => setSuccessMessage(''), 3000);
+          await loadBookings(false); // Ricarica la lista
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setCancellingId(null);
+          return;
+        } else {
+          const errorType = categorizeError(result.error);
+          const enhancedMessage = getEnhancedErrorMessage(result.error, errorType);
+          
+          if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+            continue;
+          } else {
+            setError(enhancedMessage);
+            break;
+          }
+        }
+      } catch (err) {
+        const errorType = categorizeError(err.message);
+        const enhancedMessage = getEnhancedErrorMessage(err.message, errorType);
+        
+        if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+          continue;
+        } else {
+          setError(enhancedMessage);
+          break;
+        }
       }
-    } catch (err) {
-      console.error("🚨 Errore cancellazione prenotazione:", err);
-      setError('Errore di rete durante la cancellazione della prenotazione');
-    } finally {
-      setCancellingId(null);
     }
+    
+    setCancellingId(null);
+    setIsRetrying(false);
+    setRetryAttempts(0);
   };
 
   const handleCloseEditModal = () => {
@@ -111,7 +273,18 @@ const MyBookings = () => {
     setEditingBooking(null);
     setSuccessMessage('Prenotazione modificata con successo!');
     setTimeout(() => setSuccessMessage(''), 3000);
-    loadBookings(); // Ricarica la lista
+    loadBookings(false); // Ricarica la lista
+  };
+
+  const retryOperation = () => {
+    setError(null);
+    setRetryAttempts(0);
+    setIsRetrying(false);
+    
+    if (operationType === 'load') {
+      loadBookings(false);
+    }
+    // Per 'delete' non facciamo retry automatico, l'utente deve ripremere il pulsante
   };
 
   const formatDate = (dateString) => {
@@ -151,7 +324,9 @@ const MyBookings = () => {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600">Caricamento prenotazioni...</span>
+        <span className="ml-3 text-gray-600">
+          {isRetrying ? `Caricamento prenotazioni... (${retryAttempts}/3)` : 'Caricamento prenotazioni...'}
+        </span>
       </div>
     );
   }
@@ -172,17 +347,26 @@ const MyBookings = () => {
 
       {/* Errore */}
       {error && (
-        <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-          <div className="flex">
-            <div>
-              <p className="font-bold">Errore nel caricamento delle prenotazioni</p>
-              <p className="text-sm">{error}</p>
-              <button 
-                onClick={() => window.location.reload()}
-                className="mt-2 text-sm underline"
-              >
-                Ricarica la pagina
-              </button>
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start">
+            <div className="text-red-600 text-xl mr-3 flex-shrink-0">📋</div>
+            <div className="flex-1">
+              <h4 className="font-medium text-red-800 mb-1">Errore nel caricamento delle prenotazioni</h4>
+              <p className="text-red-700 text-sm mb-3">{error}</p>
+              <div className="flex space-x-2">
+                <button
+                  onClick={retryOperation}
+                  className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
+                >
+                  Riprova
+                </button>
+                <button
+                  onClick={() => setError(null)}
+                  className="text-red-600 px-3 py-1 rounded text-sm border border-red-300 hover:bg-red-50 transition-colors"
+                >
+                  Chiudi
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -259,7 +443,13 @@ const MyBookings = () => {
                       disabled={cancellingId === booking.id}
                       className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 border border-red-300 rounded transition-colors disabled:opacity-50"
                     >
-                      {cancellingId === booking.id ? 'Cancellando...' : 'Cancella'}
+                      {cancellingId === booking.id ? (
+                        isRetrying && operationType === 'delete' ? 
+                          `Tentativo ${retryAttempts}/3...` : 
+                          'Cancellando...'
+                      ) : (
+                        'Cancella'
+                      )}
                     </button>
                   </div>
                 </div>

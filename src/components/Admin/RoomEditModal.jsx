@@ -11,6 +11,48 @@ const RoomEditModal = ({ room, onClose, onSuccess, isCreating = false }) => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [retryAttempts, setRetryAttempts] = useState(0);
+
+  // Funzioni di supporto per la gestione degli errori
+  const categorizeError = (errorMessage) => {
+    if (errorMessage?.includes('autorizzazione') || errorMessage?.includes('token') || errorMessage?.includes('permessi')) {
+      return 'AUTH';
+    }
+    if (errorMessage?.includes('connessione') || errorMessage?.includes('rete') || errorMessage?.includes('fetch')) {
+      return 'NETWORK';
+    }
+    if (errorMessage?.includes('server') || errorMessage?.includes('500')) {
+      return 'SERVER';
+    }
+    if (errorMessage?.includes('duplicato') || errorMessage?.includes('esiste già')) {
+      return 'DUPLICATE';
+    }
+    if (errorMessage?.includes('validazione') || errorMessage?.includes('campo')) {
+      return 'VALIDATION';
+    }
+    return 'GENERIC';
+  };
+
+  const getEnhancedErrorMessage = (originalError, errorType, action) => {
+    switch (errorType) {
+      case 'AUTH':
+        return "Sessione scaduta o permessi insufficienti. Effettua nuovamente il login.";
+      case 'NETWORK':
+        return "Problema di connessione. Controlla la tua connessione internet e riprova.";
+      case 'SERVER':
+        return "Errore del server. Il problema è temporaneo, riprova tra qualche momento.";
+      case 'DUPLICATE':
+        return "Esiste già una stanza con questo nome. Scegli un nome diverso.";
+      case 'VALIDATION':
+        return originalError || "I dati inseriti non sono validi. Controlla i campi e riprova.";
+      default:
+        return originalError || `Si è verificato un errore durante ${action}. Riprova più tardi.`;
+    }
+  };
+
+  const isRetryableError = (errorType) => {
+    return errorType === 'NETWORK' || errorType === 'SERVER';
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -37,37 +79,62 @@ const RoomEditModal = ({ room, onClose, onSuccess, isCreating = false }) => {
     setLoading(true);
     setError('');
     
-    try {
-      const updateData = {
-        nome: formData.nome.trim(),
-        capienza: parseInt(formData.capienza),
-        piano: parseInt(formData.piano) || 0,
-        descrizione: formData.descrizione.trim(),
-        isVirtual: formData.isVirtual
-      };
-      
-      console.log('🏠 Dati stanza da inviare:', updateData);
-      console.log('🏠 Modalità:', isCreating ? 'Creazione' : 'Modifica', isCreating ? '' : `(ID: ${room.id})`);
-      
-      let result;
-      if (isCreating) {
-        result = await createRoom(updateData);
-      } else {
-        result = await updateRoom(room.id, updateData);
+    const maxRetries = 3;
+    let currentRetry = 0;
+    const action = isCreating ? 'la creazione' : "l'aggiornamento";
+    
+    while (currentRetry <= maxRetries) {
+      try {
+        const updateData = {
+          nome: formData.nome.trim(),
+          capienza: parseInt(formData.capienza),
+          piano: parseInt(formData.piano) || 0,
+          descrizione: formData.descrizione.trim(),
+          isVirtual: formData.isVirtual
+        };
+        
+        let result;
+        if (isCreating) {
+          result = await createRoom(updateData);
+        } else {
+          result = await updateRoom(room.id, updateData);
+        }
+        
+        if (result.success) {
+          onSuccess(`Stanza ${formData.nome} ${isCreating ? 'creata' : 'aggiornata'} con successo`);
+          return;
+        } else {
+          const errorType = categorizeError(result.error);
+          
+          if (isRetryableError(errorType) && currentRetry < maxRetries) {
+            currentRetry++;
+            setRetryAttempts(currentRetry);
+            const delay = 1000 * currentRetry; // Backoff lineare
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          } else {
+            setError(getEnhancedErrorMessage(result.error, errorType, action));
+            break;
+          }
+        }
+      } catch (err) {
+        const errorType = categorizeError(err.message);
+        
+        if (isRetryableError(errorType) && currentRetry < maxRetries) {
+          currentRetry++;
+          setRetryAttempts(currentRetry);
+          const delay = 1000 * currentRetry;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        } else {
+          setError(getEnhancedErrorMessage(err.message, errorType, action));
+          break;
+        }
       }
-      
-      console.log('🏠 Risultato API:', result);
-      
-      if (result.success) {
-        onSuccess(`Stanza ${formData.nome} ${isCreating ? 'creata' : 'aggiornata'} con successo`);
-      } else {
-        setError(result.error || `Errore durante ${isCreating ? 'la creazione' : 'l\'aggiornamento'} della stanza`);
-      }
-    } catch {
-      setError('Errore di connessione al server');
-    } finally {
-      setLoading(false);
     }
+    
+    setLoading(false);
+    setRetryAttempts(0);
   };
 
   return (
@@ -84,8 +151,26 @@ const RoomEditModal = ({ room, onClose, onSuccess, isCreating = false }) => {
 
         <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-600">{error}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <div className="text-red-600 text-lg mr-3">⚠️</div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-red-800 mb-1">Errore</h4>
+                  <p className="text-sm text-red-700 mb-3">{error}</p>
+                  {retryAttempts > 0 && (
+                    <p className="text-xs text-red-600">
+                      Tentativo {retryAttempts}/3 in corso...
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setError('')}
+                    className="text-xs text-red-600 hover:text-red-800 underline"
+                  >
+                    Chiudi messaggio
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -196,7 +281,12 @@ const RoomEditModal = ({ room, onClose, onSuccess, isCreating = false }) => {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
             )}
-            {loading ? (isCreating ? 'Creazione...' : 'Aggiornamento...') : (isCreating ? 'Crea Stanza' : 'Aggiorna Stanza')}
+            {loading 
+              ? (retryAttempts > 0 
+                  ? `${isCreating ? 'Creazione' : 'Aggiornamento'}... (${retryAttempts}/3)`
+                  : `${isCreating ? 'Creazione' : 'Aggiornamento'}...`)
+              : (isCreating ? 'Crea Stanza' : 'Aggiorna Stanza')
+            }
           </button>
         </div>
       </div>

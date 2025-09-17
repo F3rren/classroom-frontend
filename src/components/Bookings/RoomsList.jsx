@@ -6,6 +6,44 @@ import BookingModal from './BookingModal';
 import RoomEditModal from './RoomEditModal';
 import BookingsCalendarWidget from './BookingsCalendarWidget';
 
+// Sistema di gestione errori intelligente
+const categorizeError = (error) => {
+  if (error.response?.status === 401 || error.message?.includes('non autorizzato')) {
+    return 'AUTH';
+  }
+  if (!navigator.onLine || error.code === 'NETWORK_ERROR' || error.message?.includes('fetch')) {
+    return 'NETWORK';
+  }
+  if (error.response?.status >= 500) {
+    return 'SERVER';
+  }
+  if (error.response?.status === 409) {
+    return 'CONFLICT';
+  }
+  if (error.response?.status === 400) {
+    return 'VALIDATION';
+  }
+  return 'GENERIC';
+};
+
+const getEnhancedErrorMessage = (error, operation = '') => {
+  const category = categorizeError(error);
+  const baseMessages = {
+    'AUTH': 'Sessione scaduta. Effettua nuovamente il login.',
+    'NETWORK': 'Connessione internet non disponibile. Riprova quando torni online.',
+    'SERVER': 'Problema temporaneo del server. Stiamo lavorando per risolverlo.',
+    'CONFLICT': operation === 'load' ? 'Conflitto durante il caricamento delle stanze.' : 'Operazione non possibile per conflitto con altri dati.',
+    'VALIDATION': operation === 'load' ? 'Dati non validi ricevuti dal server.' : 'I dati forniti non sono validi.',
+    'GENERIC': operation === 'load' ? 'Impossibile caricare le stanze. Riprova più tardi.' : 'Si è verificato un errore imprevisto.'
+  };
+  return baseMessages[category] || 'Errore sconosciuto';
+};
+
+const isRetryableError = (error) => {
+  const category = categorizeError(error);
+  return ['NETWORK', 'SERVER'].includes(category);
+};
+
 const RoomsList = () => {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,28 +59,92 @@ const RoomsList = () => {
   const [featureFilter, setFeatureFilter] = useState('all');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [selectedDateBookings, setSelectedDateBookings] = useState([]);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+  const [operationType, setOperationType] = useState(null);
+  const [userLoading, setUserLoading] = useState(false);
 
   useEffect(() => {
     loadRooms();
     loadUser();
   }, []);
 
+  // Funzione di retry
+  const retryOperation = async (operation, maxAttempts = 3) => {
+    setIsRetrying(true);
+    setRetryAttempts(0);
+    setError('');
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        setRetryAttempts(attempt);
+        const result = await operation();
+        setIsRetrying(false);
+        setRetryAttempts(0);
+        setOperationType(null);
+        return result;
+      } catch (error) {
+        if (attempt === maxAttempts) {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+        
+        if (isRetryableError(error)) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+        } else {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+      }
+    }
+  };
+
   const loadRooms = async () => {
     setLoading(true);
-    const result = await getPhysicalRoomsDetailed();
-    if (result.success) {
-      setRooms(result.data);
-      setError(null);
-    } else {
-      setError(result.error);
+    setOperationType('load');
+    
+    try {
+      await retryOperation(async () => {
+        const result = await getPhysicalRoomsDetailed();
+        if (result.success) {
+          setRooms(result.data);
+          setError(null);
+          return result;
+        } else {
+          throw new Error(result.error || 'Errore nel caricamento stanze');
+        }
+      });
+    } catch {
+      // Errore già gestito in retryOperation
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const loadUser = async () => {
-    const userResult = await getCurrentUser();
-    if (userResult && userResult.success) {
-      setUser(userResult.data);
+    setUserLoading(true);
+    setOperationType('user');
+    
+    try {
+      await retryOperation(async () => {
+        const userResult = await getCurrentUser();
+        if (userResult && userResult.success) {
+          setUser(userResult.data);
+          return userResult;
+        } else {
+          throw new Error('Errore nel caricamento utente');
+        }
+      });
+    } catch {
+      // Errore già gestito in retryOperation
+    } finally {
+      setUserLoading(false);
     }
   };
 
@@ -73,7 +175,6 @@ const RoomsList = () => {
   const handleDateSelect = (date, bookings) => {
     setSelectedCalendarDate(date);
     setSelectedDateBookings(bookings);
-    console.log(`Selected date: ${date.toDateString()}, bookings:`, bookings);
   };
 
   // Funzione helper per determinare lo stato della stanza
@@ -165,8 +266,15 @@ const RoomsList = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2">Caricamento stanze...</span>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <span className="text-gray-600">
+            {isRetrying && operationType === 'load' ? 
+              `Caricamento stanze (tentativo ${retryAttempts}/3)...` : 
+              'Caricamento stanze...'
+            }
+          </span>
+        </div>
       </div>
     );
   }
@@ -177,21 +285,40 @@ const RoomsList = () => {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-start">
             <div className="flex-shrink-0">
-              <div className="w-5 h-5 bg-red-400 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-bold">!</span>
-              </div>
+              <svg className="h-5 w-5 text-red-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
             </div>
-            <div className="ml-3">
+            <div className="ml-3 flex-1">
               <h3 className="text-sm font-medium text-red-800">Errore nel caricamento</h3>
               <div className="mt-2 text-sm text-red-700">
                 {error}
               </div>
-              <div className="mt-4">
+              {isRetrying && operationType === 'load' && (
+                <div className="mt-2 text-sm text-red-600">
+                  Tentativo {retryAttempts} di 3 in corso...
+                </div>
+              )}
+              <div className="mt-4 flex space-x-2">
                 <button
                   onClick={loadRooms}
-                  className="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1 rounded text-sm font-medium"
+                  disabled={loading || isRetrying}
+                  className="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1 rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
-                  Riprova
+                  {loading || (isRetrying && operationType === 'load') ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-800 mr-2"></div>
+                      Riprovando...
+                    </>
+                  ) : (
+                    'Riprova'
+                  )}
+                </button>
+                <button
+                  onClick={() => setError('')}
+                  className="text-red-600 hover:text-red-800 px-2 py-1 text-sm font-medium"
+                >
+                  Chiudi
                 </button>
               </div>
             </div>
@@ -206,10 +333,16 @@ const RoomsList = () => {
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Prenotazione Stanze</h1>
         <p className="text-gray-600">
-          {user?.ruolo === 'admin' 
-            ? 'Gestisci e prenota le stanze disponibili'
-            : 'Cerca e prenota le stanze disponibili'
-          }
+          {userLoading ? (
+            <span className="flex items-center">
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400 mr-2"></div>
+              Caricamento...
+            </span>
+          ) : user?.ruolo === 'admin' ? (
+            'Gestisci e prenota le stanze disponibili'
+          ) : (
+            'Cerca e prenota le stanze disponibili'
+          )}
         </p>
       </div>
 

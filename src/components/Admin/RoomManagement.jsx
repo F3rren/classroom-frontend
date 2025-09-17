@@ -11,23 +11,93 @@ const RoomManagement = () => {
   const [blockingRoom, setBlockingRoom] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [creatingRoom, setCreatingRoom] = useState(false);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+
+  // Funzioni di supporto per la gestione degli errori
+  const categorizeError = (errorMessage) => {
+    if (errorMessage?.includes('autorizzazione') || errorMessage?.includes('token')) {
+      return 'AUTH';
+    }
+    if (errorMessage?.includes('connessione') || errorMessage?.includes('rete') || errorMessage?.includes('fetch')) {
+      return 'NETWORK';
+    }
+    if (errorMessage?.includes('server') || errorMessage?.includes('500')) {
+      return 'SERVER';
+    }
+    return 'GENERIC';
+  };
+
+  const getEnhancedErrorMessage = (originalError, errorType) => {
+    switch (errorType) {
+      case 'AUTH':
+        return "Sessione scaduta. Effettua nuovamente il login per continuare.";
+      case 'NETWORK':
+        return "Problema di connessione. Controlla la tua connessione internet e riprova.";
+      case 'SERVER':
+        return "Errore del server. Il problema è temporaneo, riprova tra qualche momento.";
+      default:
+        return originalError || "Si è verificato un errore nel caricamento delle stanze. Riprova più tardi.";
+    }
+  };
+
+  const isRetryableError = (errorType) => {
+    return errorType === 'NETWORK' || errorType === 'SERVER';
+  };
 
   useEffect(() => {
     loadRooms();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadRooms = async () => {
-    setLoading(true);
-    const result = await getAllRoomsAdmin();
+    const maxRetries = 3;
+    let currentRetry = 0;
     
-    if (result.success) {
-      setRooms(result.data || []);
-      setError(null);
-    } else {
-      setError(result.error);
-      setRooms([]);
+    setLoading(true);
+    
+    while (currentRetry <= maxRetries) {
+      try {
+        setError(null);
+        
+        const result = await getAllRoomsAdmin();
+        
+        if (result.success) {
+          setRooms(result.data || []);
+          setError(null);
+          break;
+        } else {
+          const errorType = categorizeError(result.error);
+          
+          if (isRetryableError(errorType) && currentRetry < maxRetries) {
+            currentRetry++;
+            setRetryAttempts(currentRetry);
+            const delay = 1000 * currentRetry; // Backoff lineare
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          } else {
+            setError(getEnhancedErrorMessage(result.error, errorType));
+            setRooms([]);
+            break;
+          }
+        }
+      } catch (err) {
+        const errorType = categorizeError(err.message);
+        
+        if (isRetryableError(errorType) && currentRetry < maxRetries) {
+          currentRetry++;
+          setRetryAttempts(currentRetry);
+          const delay = 1000 * currentRetry;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        } else {
+          setError(getEnhancedErrorMessage(err.message, errorType));
+          setRooms([]);
+          break;
+        }
+      }
     }
+    
     setLoading(false);
+    setRetryAttempts(0);
   };
 
   const handleEditRoom = (room) => {
@@ -105,8 +175,17 @@ const RoomManagement = () => {
   if (loading) {
     return (
       <div className="text-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="text-gray-500 mt-2">Caricamento stanze...</p>
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="text-gray-500">
+            <p>Caricamento stanze...</p>
+            {retryAttempts > 0 && (
+              <p className="text-sm text-gray-400">
+                Tentativo {retryAttempts}/3
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -133,17 +212,26 @@ const RoomManagement = () => {
 
       {/* Errore */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-red-800">
-                {error}
-              </p>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <div className="flex items-start">
+            <div className="text-red-600 text-xl mr-3">⚠️</div>
+            <div className="flex-1">
+              <h3 className="font-bold text-red-800 mb-2">Errore nel caricamento delle stanze</h3>
+              <p className="text-red-700 mb-4">{error}</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={loadRooms}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Riprova
+                </button>
+                <button
+                  onClick={() => setError(null)}
+                  className="text-red-600 px-4 py-2 rounded-lg border border-red-300 hover:bg-red-50 transition-colors"
+                >
+                  Chiudi
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -255,15 +343,21 @@ const RoomManagement = () => {
               ))}
             </ul>
             
-            {rooms.length === 0 && (
+            {rooms.length === 0 && !error && (
               <div className="text-center py-12">
                 <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 0V9a2 2 0 01-2-2V3m0 4h10m-5 0v6m3-3h4" />
                 </svg>
-                <h3 className="text-lg font-medium text-gray-900 mb-1">Nessuna stanza trovata</h3>
-                <p className="text-gray-500">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nessuna stanza trovata</h3>
+                <p className="text-gray-500 mb-4">
                   Non ci sono stanze nel sistema.
                 </p>
+                <button
+                  onClick={handleCreateRoom}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Crea la prima stanza
+                </button>
               </div>
             )}
           </div>

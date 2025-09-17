@@ -1,6 +1,44 @@
 import { useState } from 'react';
 import { updateRoom } from '../../services/bookingService';
 
+// Sistema di gestione errori intelligente
+const categorizeError = (error) => {
+  if (error.response?.status === 401 || error.message?.includes('non autorizzato')) {
+    return 'AUTH';
+  }
+  if (!navigator.onLine || error.code === 'NETWORK_ERROR' || error.message?.includes('fetch')) {
+    return 'NETWORK';
+  }
+  if (error.response?.status >= 500) {
+    return 'SERVER';
+  }
+  if (error.response?.status === 409) {
+    return 'CONFLICT';
+  }
+  if (error.response?.status === 400) {
+    return 'VALIDATION';
+  }
+  return 'GENERIC';
+};
+
+const getEnhancedErrorMessage = (error, operation = '') => {
+  const category = categorizeError(error);
+  const baseMessages = {
+    'AUTH': 'Sessione scaduta. Effettua nuovamente il login.',
+    'NETWORK': 'Connessione internet non disponibile. Riprova quando torni online.',
+    'SERVER': 'Problema temporaneo del server. Stiamo lavorando per risolverlo.',
+    'CONFLICT': operation === 'update' ? 'Impossibile aggiornare: esiste già una stanza con questo nome.' : 'Conflitto con i dati esistenti.',
+    'VALIDATION': operation === 'update' ? 'I dati della stanza non sono validi. Controlla i campi obbligatori.' : 'I dati forniti non sono validi.',
+    'GENERIC': operation === 'update' ? 'Errore durante l\'aggiornamento della stanza. Riprova più tardi.' : 'Si è verificato un errore imprevisto.'
+  };
+  return baseMessages[category] || 'Errore sconosciuto';
+};
+
+const isRetryableError = (error) => {
+  const category = categorizeError(error);
+  return ['NETWORK', 'SERVER'].includes(category);
+};
+
 const RoomEditModal = ({ room, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     name: room.name || '',
@@ -11,6 +49,45 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+  const [operationType, setOperationType] = useState(null);
+
+  // Funzione di retry
+  const retryOperation = async (operation, maxAttempts = 3) => {
+    setIsRetrying(true);
+    setRetryAttempts(0);
+    setError('');
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        setRetryAttempts(attempt);
+        const result = await operation();
+        setIsRetrying(false);
+        setRetryAttempts(0);
+        setOperationType(null);
+        return result;
+      } catch (error) {
+        if (attempt === maxAttempts) {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+        
+        if (isRetryableError(error)) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+        } else {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+      }
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,6 +105,7 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
 
     setLoading(true);
     setError(null);
+    setOperationType('update');
 
     try {
       const updateData = {
@@ -40,15 +118,17 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
           : []
       };
 
-      const result = await updateRoom(room.id, updateData);
-
-      if (result.success) {
-        onSuccess();
-      } else {
-        setError(result.error);
-      }
+      await retryOperation(async () => {
+        const result = await updateRoom(room.id, updateData);
+        if (result.success) {
+          onSuccess();
+          return result;
+        } else {
+          throw new Error(result.error || 'Errore durante l\'aggiornamento della stanza');
+        }
+      });
     } catch {
-      setError('Errore durante l\'aggiornamento della stanza');
+      // Errore già gestito in retryOperation
     } finally {
       setLoading(false);
     }
@@ -77,8 +157,32 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6">
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-              {error}
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    <svg className="h-4 w-4 text-red-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-2">
+                    <p className="text-sm text-red-600">{error}</p>
+                    {isRetrying && (
+                      <p className="text-xs text-red-500 mt-1">
+                        Tentativo {retryAttempts} di 3 in corso...
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setError('')}
+                  className="flex-shrink-0 text-red-400 hover:text-red-600 transition-colors"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
             </div>
           )}
 
@@ -178,7 +282,10 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
               {loading ? (
                 <div className="flex items-center justify-center">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Salvando...
+                  {isRetrying && operationType === 'update' ? 
+                    `Tentativo ${retryAttempts}/3...` : 
+                    'Salvando...'
+                  }
                 </div>
               ) : (
                 'Salva Modifiche'

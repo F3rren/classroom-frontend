@@ -4,6 +4,44 @@ import { getAllBookings } from '../../services/bookingService';
 import { createBooking } from '../../services/bookingService';
 import { getCurrentUser } from '../../services/authService';
 
+// Sistema di gestione errori intelligente
+const categorizeError = (error) => {
+  if (error.response?.status === 401 || error.message?.includes('non autorizzato')) {
+    return 'AUTH';
+  }
+  if (!navigator.onLine || error.code === 'NETWORK_ERROR' || error.message?.includes('fetch')) {
+    return 'NETWORK';
+  }
+  if (error.response?.status >= 500) {
+    return 'SERVER';
+  }
+  if (error.response?.status === 409) {
+    return 'CONFLICT';
+  }
+  if (error.response?.status === 400) {
+    return 'VALIDATION';
+  }
+  return 'GENERIC';
+};
+
+const getEnhancedErrorMessage = (error, operation = '') => {
+  const category = categorizeError(error);
+  const baseMessages = {
+    'AUTH': 'Sessione scaduta. Effettua nuovamente il login.',
+    'NETWORK': 'Connessione internet non disponibile. Riprova quando torni online.',
+    'SERVER': 'Problema temporaneo del server. Stiamo lavorando per risolverlo.',
+    'CONFLICT': operation === 'booking' ? 'La fascia oraria è già stata prenotata da qualcun altro.' : 'Conflitto con i dati esistenti.',
+    'VALIDATION': operation === 'booking' ? 'I dati della prenotazione non sono validi.' : 'I dati forniti non sono validi.',
+    'GENERIC': operation === 'load' ? 'Impossibile caricare i dati del calendario.' : operation === 'booking' ? 'Errore durante la creazione della prenotazione.' : 'Si è verificato un errore imprevisto.'
+  };
+  return baseMessages[category] || 'Errore sconosciuto';
+};
+
+const isRetryableError = (error) => {
+  const category = categorizeError(error);
+  return ['NETWORK', 'SERVER'].includes(category);
+};
+
 // Funzione helper per convertire date senza problemi di fuso orario
 const formatDateLocal = (date) => {
   const year = date.getFullYear();
@@ -23,6 +61,9 @@ const WeeklyCalendar = () => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [slotDetails, setSlotDetails] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+  const [operationType, setOperationType] = useState(null);
 
   // Fasce orarie fisse
   const timeSlots = [
@@ -52,52 +93,84 @@ const WeeklyCalendar = () => {
 
   const weekDays = getWeekDays(currentWeek);
 
+  // Funzione di retry
+  const retryOperation = async (operation, maxAttempts = 3) => {
+    setIsRetrying(true);
+    setRetryAttempts(0);
+    setError('');
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        setRetryAttempts(attempt);
+        const result = await operation();
+        setIsRetrying(false);
+        setRetryAttempts(0);
+        setOperationType(null);
+        return result;
+      } catch (error) {
+        if (attempt === maxAttempts) {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+        
+        if (isRetryableError(error)) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+        } else {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+      }
+    }
+  };
+
   // Carica i dati iniziali
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      setOperationType('load');
+      
       try {
-        // Carica utente corrente
-        const userResult = await getCurrentUser();
-        if (userResult && userResult.success) {
-          setCurrentUser(userResult.data);
-        }
+        await retryOperation(async () => {
+          // Carica utente corrente
+          const userResult = await getCurrentUser();
+          if (userResult && userResult.success) {
+            setCurrentUser(userResult.data);
+          }
 
-        // Carica stanze virtuali
-        const roomsResult = await getVirtualRoomsDetailed();
-        if (roomsResult.success) {
-          const virtualRooms = roomsResult.data || [];
-          
-          console.log(`📅 WeeklyCalendar (virtual): ${virtualRooms.length} stanze virtuali caricate`);
-          console.log('📅 Stanze virtuali complete:', virtualRooms);
-          console.log('📅 Stanze virtuali mapping:', virtualRooms.map(r => ({ 
-            id: r.id,
-            nome: r.nome, 
-            name: r.name,
-            isVirtual: r.isVirtual || r.virtuale,
-            allFields: Object.keys(r)
-          })));
-          
-          setRooms(virtualRooms);
-        }
+          // Carica stanze virtuali
+          const roomsResult = await getVirtualRoomsDetailed();
+          if (roomsResult.success) {
+            const virtualRooms = roomsResult.data || [];
+            setRooms(virtualRooms);
+          } else {
+            throw new Error(roomsResult.error || 'Errore nel caricamento stanze virtuali');
+          }
 
-        // Carica prenotazioni
-        const bookingsResult = await getAllBookings();
-        if (bookingsResult.success) {
-          setBookings(bookingsResult.data || []);
-        }
+          // Carica prenotazioni
+          const bookingsResult = await getAllBookings();
+          if (bookingsResult.success) {
+            setBookings(bookingsResult.data || []);
+          } else {
+            throw new Error(bookingsResult.error || 'Errore nel caricamento prenotazioni');
+          }
 
-        setError(null);
-      } catch (err) {
-        console.error('Errore caricamento dati:', err);
-        setError('Errore nel caricamento dei dati');
+          return { rooms: roomsResult, bookings: bookingsResult, user: userResult };
+        });
+      } catch {
+        // Errore già gestito in retryOperation
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, [currentWeek]); // Rimossa dipendenza roomType
+  }, [currentWeek]);
 
   // Naviga tra le settimane
   const navigateWeek = (direction) => {
@@ -226,19 +299,64 @@ const WeeklyCalendar = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600">Caricamento calendario...</span>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-3"></div>
+          <span className="text-gray-600">
+            {isRetrying && operationType === 'load' ? 
+              `Caricamento calendario (tentativo ${retryAttempts}/3)...` : 
+              'Caricamento calendario...'
+            }
+          </span>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-        {error}
-        <button onClick={() => window.location.reload()} className="ml-4 underline">
-          Ricarica
-        </button>
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3 flex-1">
+              <h3 className="text-sm font-medium text-red-800">Errore nel caricamento calendario</h3>
+              <div className="mt-2 text-sm text-red-700">
+                {error}
+              </div>
+              {isRetrying && operationType === 'load' && (
+                <div className="mt-2 text-sm text-red-600">
+                  Tentativo {retryAttempts} di 3 in corso...
+                </div>
+              )}
+              <div className="mt-4 flex space-x-2">
+                <button
+                  onClick={() => window.location.reload()}
+                  disabled={loading || isRetrying}
+                  className="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1 rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {loading || (isRetrying && operationType === 'load') ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-800 mr-2"></div>
+                      Riprovando...
+                    </>
+                  ) : (
+                    'Ricarica pagina'
+                  )}
+                </button>
+                <button
+                  onClick={() => setError('')}
+                  className="text-red-600 hover:text-red-800 px-2 py-1 text-sm font-medium"
+                >
+                  Chiudi
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -340,17 +458,7 @@ const WeeklyCalendar = () => {
                 {/* Nome stanza */}
                 <div className="p-4 bg-gray-50 border-r font-medium text-gray-900">
                   <div className="text-sm">
-                    {(() => {
-                      const roomName = room.nome || room.name || `Stanza ${room.id}`;
-                      console.log('🏠 WeeklyCalendar debug - Room:', { 
-                        id: room.id, 
-                        nome: room.nome, 
-                        name: room.name,
-                        displayName: roomName,
-                        fullRoom: room 
-                      });
-                      return roomName;
-                    })()}
+                    {room.nome || room.name || `Stanza ${room.id}`}
                   </div>
                 </div>
                 
@@ -430,32 +538,71 @@ const BookingModal = ({ slot, onClose, onSuccess, currentUser }) => {
   const [purpose, setPurpose] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+  const [operationType, setOperationType] = useState(null);
+
+  // Funzione di retry per il modal
+  const retryOperation = async (operation, maxAttempts = 3) => {
+    setIsRetrying(true);
+    setRetryAttempts(0);
+    setError('');
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        setRetryAttempts(attempt);
+        const result = await operation();
+        setIsRetrying(false);
+        setRetryAttempts(0);
+        setOperationType(null);
+        return result;
+      } catch (error) {
+        if (attempt === maxAttempts) {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+        
+        if (isRetryableError(error)) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+        } else {
+          setIsRetrying(false);
+          setRetryAttempts(0);
+          setOperationType(null);
+          setError(getEnhancedErrorMessage(error, operationType));
+          throw error;
+        }
+      }
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
+    setOperationType('booking');
 
     try {
-      const bookingData = {
-        aulaId: slot.roomId,
-        date: slot.date,
-        startTime: slot.timeSlot.startTime,
-        endTime: slot.timeSlot.endTime,
-        purpose: purpose.trim() || null
-      };
+      await retryOperation(async () => {
+        const bookingData = {
+          aulaId: slot.roomId,
+          date: slot.date,
+          startTime: slot.timeSlot.startTime,
+          endTime: slot.timeSlot.endTime,
+          purpose: purpose.trim() || null
+        };
 
-      console.log('Creando prenotazione:', bookingData);
-      const result = await createBooking(bookingData);
-
-      if (result.success) {
-        onSuccess();
-      } else {
-        setError(result.error || 'Errore nella creazione della prenotazione');
-      }
-    } catch (err) {
-      console.error('Errore prenotazione:', err);
-      setError('Errore di rete nella creazione della prenotazione');
+        const result = await createBooking(bookingData);
+        if (result.success) {
+          onSuccess();
+          return result;
+        } else {
+          throw new Error(result.error || 'Errore nella creazione della prenotazione');
+        }
+      });
+    } catch {
+      // Errore già gestito in retryOperation
     } finally {
       setLoading(false);
     }
@@ -479,8 +626,30 @@ const BookingModal = ({ slot, onClose, onSuccess, currentUser }) => {
         </div>
 
         {error && (
-          <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded">
-            {error}
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-4 w-4 text-red-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-2 flex-1">
+                <p className="text-sm text-red-600">{error}</p>
+                {isRetrying && operationType === 'booking' && (
+                  <p className="text-xs text-red-500 mt-1">
+                    Tentativo {retryAttempts} di 3 in corso...
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setError('')}
+                className="flex-shrink-0 text-red-400 hover:text-red-600 transition-colors ml-2"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
 
@@ -513,7 +682,17 @@ const BookingModal = ({ slot, onClose, onSuccess, currentUser }) => {
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               disabled={loading}
             >
-              {loading ? 'Prenotando...' : 'Conferma Prenotazione'}
+              {loading ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  {isRetrying && operationType === 'booking' ? 
+                    `Tentativo ${retryAttempts}/3...` : 
+                    'Prenotando...'
+                  }
+                </div>
+              ) : (
+                'Conferma Prenotazione'
+              )}
             </button>
           </div>
         </form>

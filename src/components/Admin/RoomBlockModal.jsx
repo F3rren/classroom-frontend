@@ -6,10 +6,42 @@ const RoomBlockModal = ({ room, onClose, onSuccess }) => {
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [retryAttempts, setRetryAttempts] = useState(0);
   
   const isCurrentlyBlocked = room.isBlocked || room.blocked;
   const actionText = isCurrentlyBlocked ? 'sbloccare' : 'bloccare';
   const actionButtonText = isCurrentlyBlocked ? 'Sblocca Stanza' : 'Blocca Stanza';
+
+  // Funzioni di supporto per la gestione degli errori
+  const categorizeError = (errorMessage) => {
+    if (errorMessage?.includes('autorizzazione') || errorMessage?.includes('token') || errorMessage?.includes('permessi')) {
+      return 'AUTH';
+    }
+    if (errorMessage?.includes('connessione') || errorMessage?.includes('rete') || errorMessage?.includes('fetch')) {
+      return 'NETWORK';
+    }
+    if (errorMessage?.includes('server') || errorMessage?.includes('500')) {
+      return 'SERVER';
+    }
+    return 'GENERIC';
+  };
+
+  const getEnhancedErrorMessage = (originalError, errorType) => {
+    switch (errorType) {
+      case 'AUTH':
+        return "Sessione scaduta o permessi insufficienti. Effettua nuovamente il login.";
+      case 'NETWORK':
+        return "Problema di connessione. Controlla la tua connessione internet e riprova.";
+      case 'SERVER':
+        return "Errore del server. Il problema è temporaneo, riprova tra qualche momento.";
+      default:
+        return originalError || "Si è verificato un errore imprevisto. Riprova più tardi.";
+    }
+  };
+
+  const isRetryableError = (errorType) => {
+    return errorType === 'NETWORK' || errorType === 'SERVER';
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,51 +55,66 @@ const RoomBlockModal = ({ room, onClose, onSuccess }) => {
     setLoading(true);
     setError('');
     
-    try {
-      // Debug completo: utente, admin status e token
-      console.log("🔒 DEBUG RoomBlockModal - Verifiche pre-chiamata:");
-      
-      const currentUser = await getCurrentUser();
-      console.log("  - Utente corrente:", currentUser);
-      
-      const userIsAdmin = await isCurrentUserAdmin();
-      console.log("  - Utente è admin:", userIsAdmin);
-      
-      const token = localStorage.getItem("token");
-      console.log("  - Token presente:", !!token);
-      console.log("  - Token preview:", token ? token.substring(0, 30) + "..." : "N/A");
-      
-      console.log("  - Room data:", room);
-      
-      if (!userIsAdmin) {
-        setError('Permessi insufficienti: solo gli amministratori possono bloccare le stanze');
-        return;
+    const maxRetries = 3;
+    let currentRetry = 0;
+    
+    while (currentRetry <= maxRetries) {
+      try {
+        // Verifica permessi utente
+        await getCurrentUser(); // Per verificare che il token sia valido
+        const userIsAdmin = await isCurrentUserAdmin();
+        
+        if (!userIsAdmin) {
+          setError('Permessi insufficienti: solo gli amministratori possono bloccare le stanze');
+          setLoading(false);
+          return;
+        }
+        
+        const blockData = {
+          isBlocked: !isCurrentlyBlocked,
+          blockReason: !isCurrentlyBlocked ? reason.trim() : null
+        };
+        
+        const result = await toggleRoomBlock(room.id, blockData);
+        
+        if (result.success) {
+          const message = isCurrentlyBlocked 
+            ? `Stanza ${room.nome || room.name} sbloccata con successo`
+            : `Stanza ${room.nome || room.name} bloccata con successo`;
+          onSuccess(message);
+          return;
+        } else {
+          const errorType = categorizeError(result.error);
+          
+          if (isRetryableError(errorType) && currentRetry < maxRetries) {
+            currentRetry++;
+            setRetryAttempts(currentRetry);
+            const delay = 1000 * currentRetry; // Backoff lineare
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          } else {
+            setError(getEnhancedErrorMessage(result.error, errorType));
+            break;
+          }
+        }
+      } catch (err) {
+        const errorType = categorizeError(err.message);
+        
+        if (isRetryableError(errorType) && currentRetry < maxRetries) {
+          currentRetry++;
+          setRetryAttempts(currentRetry);
+          const delay = 1000 * currentRetry;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        } else {
+          setError(getEnhancedErrorMessage(err.message, errorType));
+          break;
+        }
       }
-      
-      const blockData = {
-        isBlocked: !isCurrentlyBlocked,
-        blockReason: !isCurrentlyBlocked ? reason.trim() : null
-      };
-      
-      console.log("  - Dati blocco da inviare:", blockData);
-      
-      const result = await toggleRoomBlock(room.id, blockData);
-      
-      if (result.success) {
-        const message = isCurrentlyBlocked 
-          ? `Stanza ${room.nome || room.name} sbloccata con successo`
-          : `Stanza ${room.nome || room.name} bloccata con successo`;
-        onSuccess(message);
-      } else {
-        console.error("🔒 Errore da toggleRoomBlock:", result);
-        setError(result.error || `Errore durante il ${actionText} della stanza`);
-      }
-    } catch (err) {
-      console.error("🔒 Errore catch nel RoomBlockModal:", err);
-      setError('Errore di connessione al server');
-    } finally {
-      setLoading(false);
     }
+    
+    setLoading(false);
+    setRetryAttempts(0);
   };
 
   return (
@@ -84,8 +131,26 @@ const RoomBlockModal = ({ room, onClose, onSuccess }) => {
 
         <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-600">{error}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <div className="text-red-600 text-lg mr-3">⚠️</div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-red-800 mb-1">Errore</h4>
+                  <p className="text-sm text-red-700 mb-3">{error}</p>
+                  {retryAttempts > 0 && (
+                    <p className="text-xs text-red-600">
+                      Tentativo {retryAttempts}/3 in corso...
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setError('')}
+                    className="text-xs text-red-600 hover:text-red-800 underline"
+                  >
+                    Chiudi messaggio
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -178,7 +243,12 @@ const RoomBlockModal = ({ room, onClose, onSuccess }) => {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
             )}
-            {loading ? `${actionText}...` : actionButtonText}
+            {loading 
+              ? (retryAttempts > 0 
+                  ? `${actionText}... (${retryAttempts}/3)`
+                  : `${actionText}...`)
+              : actionButtonText
+            }
           </button>
         </div>
       </div>
