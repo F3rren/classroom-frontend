@@ -10,6 +10,7 @@ const RoomManagement = () => {
   const [editingRoom, setEditingRoom] = useState(null);
   const [blockingRoom, setBlockingRoom] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [creatingRoom, setCreatingRoom] = useState(false);
 
   useEffect(() => {
     loadRooms();
@@ -33,14 +34,20 @@ const RoomManagement = () => {
     setEditingRoom(room);
   };
 
+  const handleCreateRoom = () => {
+    setCreatingRoom(true);
+  };
+
   const handleCloseEditModal = () => {
     setEditingRoom(null);
+    setCreatingRoom(false);
   };
 
   const handleEditSuccess = (message) => {
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(''), 5000);
     setEditingRoom(null);
+    setCreatingRoom(false);
     loadRooms(); // Ricarica la lista
   };
 
@@ -70,6 +77,27 @@ const RoomManagement = () => {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
         Disponibile
+      </span>
+    );
+  };
+
+  const getTypeBadge = (room) => {
+    if (room.isVirtual || room.virtuale) { // Supporta entrambi i formati
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          Virtuale
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+        Fisica
       </span>
     );
   };
@@ -122,11 +150,22 @@ const RoomManagement = () => {
       )}
 
       {/* Header */}
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Gestione Stanze</h2>
-        <p className="text-gray-600">
-          Modifica le informazioni delle stanze e gestisci la loro disponibilità
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Gestione Stanze</h2>
+          <p className="text-gray-600">
+            Modifica le informazioni delle stanze e gestisci la loro disponibilità
+          </p>
+        </div>
+        <button
+          onClick={handleCreateRoom}
+          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+          </svg>
+          Crea Stanza
+        </button>
       </div>
 
       {/* Lista stanze */}
@@ -143,6 +182,7 @@ const RoomManagement = () => {
                           <h3 className="text-lg font-medium text-gray-900 flex items-center gap-3">
                             {room.nome || room.name}
                             {getStatusBadge(room)}
+                            {getTypeBadge(room)}
                           </h3>
                           <div className="mt-1 flex items-center gap-6 text-sm text-gray-500">
                             <span className="flex items-center">
@@ -151,11 +191,31 @@ const RoomManagement = () => {
                               </svg>
                               Capienza: {room.capienza || room.capacity || 'N/A'}
                             </span>
+                            {!(room.isVirtual || room.virtuale) && ( // Supporta entrambi i formati
+                              <span className="flex items-center">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                                Piano: {room.piano || room.floor || 'Terra'}
+                              </span>
+                            )}
                             <span className="flex items-center">
-                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                              </svg>
-                              Piano: {room.piano || room.floor || 'Terra'}
+                              {(room.isVirtual || room.virtuale) ? ( // Supporta entrambi i formati
+                                <>
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                  </svg>
+                                  Stanza Virtuale
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                  Stanza Fisica
+                                </>
+                              )}
                             </span>
                           </div>
                           {room.isBlocked && room.blockReason && (
@@ -210,12 +270,13 @@ const RoomManagement = () => {
         </div>
       </div>
 
-      {/* Modal per modifica stanza */}
-      {editingRoom && (
+      {/* Modal per modifica/creazione stanza */}
+      {(editingRoom || creatingRoom) && (
         <RoomEditModal
-          room={editingRoom}
+          room={editingRoom || { nome: '', capienza: '', piano: '', descrizione: '', isVirtual: false }}
           onClose={handleCloseEditModal}
           onSuccess={handleEditSuccess}
+          isCreating={creatingRoom}
         />
       )}
 

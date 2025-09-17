@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { updateRoom } from '../../services/bookingService';
+import { updateRoom, createRoom } from '../../services/bookingService';
 
-const RoomEditModal = ({ room, onClose, onSuccess }) => {
+const RoomEditModal = ({ room, onClose, onSuccess, isCreating = false }) => {
   const [formData, setFormData] = useState({
     nome: room.nome || room.name || '',
     capienza: room.capienza || room.capacity || '',
     piano: room.piano || room.floor || '',
-    descrizione: room.descrizione || room.description || ''
+    descrizione: room.descrizione || room.description || '',
+    isVirtual: Boolean(room.isVirtual || room.virtuale) // Supporta entrambi i formati per compatibilità
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -41,15 +42,26 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
         nome: formData.nome.trim(),
         capienza: parseInt(formData.capienza),
         piano: parseInt(formData.piano) || 0,
-        descrizione: formData.descrizione.trim()
+        descrizione: formData.descrizione.trim(),
+        isVirtual: formData.isVirtual
       };
       
-      const result = await updateRoom(room.id, updateData);
+      console.log('🏠 Dati stanza da inviare:', updateData);
+      console.log('🏠 Modalità:', isCreating ? 'Creazione' : 'Modifica', isCreating ? '' : `(ID: ${room.id})`);
+      
+      let result;
+      if (isCreating) {
+        result = await createRoom(updateData);
+      } else {
+        result = await updateRoom(room.id, updateData);
+      }
+      
+      console.log('🏠 Risultato API:', result);
       
       if (result.success) {
-        onSuccess(`Stanza ${formData.nome} aggiornata con successo`);
+        onSuccess(`Stanza ${formData.nome} ${isCreating ? 'creata' : 'aggiornata'} con successo`);
       } else {
-        setError(result.error || 'Errore durante l\'aggiornamento della stanza');
+        setError(result.error || `Errore durante ${isCreating ? 'la creazione' : 'l\'aggiornamento'} della stanza`);
       }
     } catch {
       setError('Errore di connessione al server');
@@ -63,10 +75,10 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">
-            Modifica Stanza
+            {isCreating ? 'Crea Nuova Stanza' : 'Modifica Stanza'}
           </h3>
           <p className="text-sm text-gray-500 mt-1">
-            Aggiorna le informazioni della stanza
+            {isCreating ? 'Inserisci le informazioni per la nuova stanza' : 'Aggiorna le informazioni della stanza'}
           </p>
         </div>
 
@@ -128,6 +140,24 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
             />
           </div>
 
+          {/* Tipo Stanza */}
+          <div>
+            <label htmlFor="isVirtual" className="block text-sm font-medium text-gray-700 mb-1">
+              Tipo Stanza *
+            </label>
+            <select
+              id="isVirtual"
+              name="isVirtual"
+              value={formData.isVirtual.toString()} // Convertiamo boolean a stringa
+              onChange={(e) => setFormData(prev => ({ ...prev, isVirtual: e.target.value === 'true' }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            >
+              <option value="false">Stanza Fisica</option>
+              <option value="true">Stanza Virtuale</option>
+            </select>
+          </div>
+
           {/* Descrizione */}
           <div>
             <label htmlFor="descrizione" className="block text-sm font-medium text-gray-700 mb-1">
@@ -166,7 +196,7 @@ const RoomEditModal = ({ room, onClose, onSuccess }) => {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
             )}
-            {loading ? 'Aggiornamento...' : 'Aggiorna Stanza'}
+            {loading ? (isCreating ? 'Creazione...' : 'Aggiornamento...') : (isCreating ? 'Crea Stanza' : 'Aggiorna Stanza')}
           </button>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getAllRooms } from '../../services/bookingService';
+import { getVirtualRoomsDetailed } from '../../services/bookingService';
 import { getAllBookings } from '../../services/bookingService';
 import { createBooking } from '../../services/bookingService';
 import { getCurrentUser } from '../../services/authService';
@@ -63,10 +63,15 @@ const WeeklyCalendar = () => {
           setCurrentUser(userResult.data);
         }
 
-        // Carica stanze
-        const roomsResult = await getAllRooms();
+        // Carica stanze virtuali
+        const roomsResult = await getVirtualRoomsDetailed();
         if (roomsResult.success) {
-          setRooms(roomsResult.data || []);
+          const virtualRooms = roomsResult.data || [];
+          
+          console.log(`📅 WeeklyCalendar (virtual): ${virtualRooms.length} stanze virtuali caricate`);
+          console.log('📅 Stanze virtuali:', virtualRooms.map(r => ({ nome: r.nome, isVirtual: r.isVirtual || r.virtuale })));
+          
+          setRooms(virtualRooms);
         }
 
         // Carica prenotazioni
@@ -85,7 +90,7 @@ const WeeklyCalendar = () => {
     };
 
     loadData();
-  }, [currentWeek]);
+  }, [currentWeek]); // Rimossa dipendenza roomType
 
   // Naviga tra le settimane
   const navigateWeek = (direction) => {
@@ -231,12 +236,22 @@ const WeeklyCalendar = () => {
     );
   }
 
+  // Titolo dinamico basato sul tipo di calendario
+  const getCalendarTitle = () => {
+    return "Calendario Aule Virtuali";
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-6">
       {/* Header con navigazione settimana */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold text-gray-900">Calendario Prenotazioni</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{getCalendarTitle()}</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Mostrando {rooms.length} aule virtuali
+            </p>
+          </div>
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigateWeek(-1)}
@@ -303,15 +318,28 @@ const WeeklyCalendar = () => {
 
         {/* Griglia calendario */}
         <div className="max-h-96 overflow-y-auto">
-          {rooms.map((room) => (
-            <div key={room.id} className="grid grid-cols-11 gap-0 border-b last:border-b-0">
-              {/* Nome stanza */}
-              <div className="p-4 bg-gray-50 border-r font-medium text-gray-900">
-                <div className="text-sm">{room.nome || `Stanza ${room.id}`}</div>
+          {rooms.length === 0 ? (
+            <div className="p-12 text-center text-gray-500">
+              <div className="text-xl font-medium mb-2">
+                Nessuna aula virtuale disponibile
               </div>
-              
-              {/* Slot per ogni giorno (2 colonne per giorno: mattina e pomeriggio) */}
-              {weekDays.map((day, dayIndex) => (
+              <p className="text-sm text-gray-400">
+                Non sono state configurate aule virtuali nel sistema
+              </p>
+            </div>
+          ) : (
+            rooms.map((room) => (
+              <div key={room.id} className="grid grid-cols-11 gap-0 border-b last:border-b-0">
+                {/* Nome stanza */}
+                <div className="p-4 bg-gray-50 border-r font-medium text-gray-900">
+                  <div className="text-sm">{room.nome || `Stanza ${room.id}`}</div>
+                  <div className="text-xs text-gray-500">
+                    {room.isVirtual || room.virtuale ? "Virtuale" : "Fisica"}
+                  </div>
+                </div>
+                
+                {/* Slot per ogni giorno (2 colonne per giorno: mattina e pomeriggio) */}
+                {weekDays.map((day, dayIndex) => (
                 <div key={dayIndex} className="col-span-2 grid grid-cols-2 gap-0 border-r last:border-r-0">
                   {timeSlots.map((timeSlot, slotIndex) => {
                     const isOccupied = isSlotOccupied(room.id, day, timeSlot);
@@ -351,7 +379,8 @@ const WeeklyCalendar = () => {
                 </div>
               ))}
             </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 

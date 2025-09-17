@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getRoomsDetailed } from '../../services/bookingService';
+import { getPhysicalRoomsDetailed } from '../../services/bookingService';
 import { getCurrentUser } from '../../services/authService';
 import RoomCard from './RoomCard';
 import BookingModal from './BookingModal';
@@ -29,7 +29,7 @@ const RoomsList = () => {
 
   const loadRooms = async () => {
     setLoading(true);
-    const result = await getRoomsDetailed();
+    const result = await getPhysicalRoomsDetailed();
     if (result.success) {
       setRooms(result.data);
       setError(null);

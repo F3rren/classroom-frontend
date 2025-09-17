@@ -272,6 +272,146 @@ export async function getRoomsDetailed() {
   }
 }
 
+// Funzione per recuperare solo le stanze fisiche con dettagli
+export async function getPhysicalRoomsDetailed() {
+  try {
+    if (!localStorage.getItem("token")) {
+      return {
+        success: false,
+        error: "Token mancante. Effettua il login.",
+        data: null
+      };
+    }
+
+    const response = await fetch("/api/rooms/physical/detailed", {
+      method: "GET",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("🏠 Risposta getPhysicalRoomsDetailed:", data);
+      
+      let roomsArray = data.rooms || data;
+      
+      // Arricchisci le stanze con i dati di blocco dalla cache
+      if (Array.isArray(roomsArray)) {
+        roomsArray = roomsArray.map(room => {
+          const cached = blockedRoomsCache.get(room.id);
+          if (cached) {
+            return {
+              ...room,
+              isBlocked: cached.isBlocked,
+              blockReason: cached.blockReason
+            };
+          }
+          return {
+            ...room,
+            isBlocked: false,
+            blockReason: null
+          };
+        });
+        
+        console.log("🔒 Stanze fisiche detailed arricchite con cache:", roomsArray.filter(r => r.isBlocked));
+      }
+      
+      return {
+        success: true,
+        error: null,
+        data: roomsArray
+      };
+    } else {
+      const errorData = await response.json();
+      return {
+        success: false,
+        error: errorData.message || "Errore nel caricamento delle stanze fisiche",
+        data: null
+      };
+    }
+    
+  } catch (err) {
+    console.error("Errore di rete:", err);
+    return {
+      success: false,
+      error: "Errore di connessione al server",
+      data: null
+    };
+  }
+}
+
+// Funzione per recuperare solo le stanze virtuali con dettagli
+export async function getVirtualRoomsDetailed() {
+  try {
+    if (!localStorage.getItem("token")) {
+      return {
+        success: false,
+        error: "Token mancante. Effettua il login.",
+        data: null
+      };
+    }
+
+    const response = await fetch("/api/rooms/virtual/detailed", {
+      method: "GET",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("🏠 Risposta getVirtualRoomsDetailed:", data);
+      
+      let roomsArray = data.rooms || data;
+      
+      // Arricchisci le stanze con i dati di blocco dalla cache
+      if (Array.isArray(roomsArray)) {
+        roomsArray = roomsArray.map(room => {
+          const cached = blockedRoomsCache.get(room.id);
+          if (cached) {
+            return {
+              ...room,
+              isBlocked: cached.isBlocked,
+              blockReason: cached.blockReason
+            };
+          }
+          return {
+            ...room,
+            isBlocked: false,
+            blockReason: null
+          };
+        });
+        
+        console.log("🔒 Stanze virtuali detailed arricchite con cache:", roomsArray.filter(r => r.isBlocked));
+      }
+      
+      return {
+        success: true,
+        error: null,
+        data: roomsArray
+      };
+    } else {
+      const errorData = await response.json();
+      return {
+        success: false,
+        error: errorData.message || "Errore nel caricamento delle stanze virtuali",
+        data: null
+      };
+    }
+    
+  } catch (err) {
+    console.error("Errore di rete:", err);
+    return {
+      success: false,
+      error: "Errore di connessione al server",
+      data: null
+    };
+  }
+}
+
 // Funzione per recuperare i dettagli di una stanza
 export async function getRoomDetails(roomId) {
   try {
@@ -1049,6 +1189,51 @@ export async function updateRoom(roomId, roomData) {
   }
 }
 
+// Funzione per creare una nuova stanza (solo admin)
+export async function createRoom(roomData) {
+  try {
+    if (!localStorage.getItem("token")) {
+      return {
+        success: false,
+        error: "Token mancante. Effettua il login.",
+        data: null
+      };
+    }
+
+    const response = await fetch(`/api/admin/createrooms`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      },
+      body: JSON.stringify(roomData)
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        success: true,
+        error: null,
+        data: data
+      };
+    } else {
+      const errorData = await response.json();
+      return {
+        success: false,
+        error: errorData.message || "Errore nella creazione della stanza",
+        data: null
+      };
+    }
+  } catch (err) {
+    console.error("Errore di rete:", err);
+    return {
+      success: false,
+      error: "Errore di connessione al server",
+      data: null
+    };
+  }
+}
+
 // Funzione per bloccare/sbloccare una stanza (solo admin) - Versione aggiornata
 export async function toggleRoomBlock(roomId, blockData) {
   try {
@@ -1165,6 +1350,7 @@ export async function toggleRoomBlock(roomId, blockData) {
       capienza: targetRoom.capienza, 
       piano: targetRoom.piano,
       isBlocked: requestData.isBlocked,
+      isVirtual: targetRoom.isVirtual || false,
       blockReason: requestData.blockReason || (requestData.isBlocked ? "Stanza bloccata" : null)
     };
     
