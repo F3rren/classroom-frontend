@@ -69,7 +69,14 @@ const WeeklyCalendar = () => {
           const virtualRooms = roomsResult.data || [];
           
           console.log(`📅 WeeklyCalendar (virtual): ${virtualRooms.length} stanze virtuali caricate`);
-          console.log('📅 Stanze virtuali:', virtualRooms.map(r => ({ nome: r.nome, isVirtual: r.isVirtual || r.virtuale })));
+          console.log('📅 Stanze virtuali complete:', virtualRooms);
+          console.log('📅 Stanze virtuali mapping:', virtualRooms.map(r => ({ 
+            id: r.id,
+            nome: r.nome, 
+            name: r.name,
+            isVirtual: r.isVirtual || r.virtuale,
+            allFields: Object.keys(r)
+          })));
           
           setRooms(virtualRooms);
         }
@@ -162,7 +169,7 @@ const WeeklyCalendar = () => {
       const booking = findBookingForSlot(roomId, date, timeSlot);
       setSlotDetails({
         type: 'booking',
-        roomName: room?.nome || `Stanza ${roomId}`,
+        roomName: room?.nome || room?.name || `Stanza ${room?.id}`,
         date: date,
         timeSlot: timeSlot,
         booking: booking
@@ -176,7 +183,7 @@ const WeeklyCalendar = () => {
       const blockDetails = findBlockDetailsForRoom(roomId);
       setSlotDetails({
         type: 'blocked',
-        roomName: room?.nome || `Stanza ${roomId}`,
+        roomName: room?.nome || room?.name || `Stanza ${room?.id}`,
         date: date,
         timeSlot: timeSlot,
         blockDetails: blockDetails
@@ -195,7 +202,7 @@ const WeeklyCalendar = () => {
       roomId,
       date: formatDateLocal(date),
       timeSlot,
-      roomName: room?.nome || `Stanza ${roomId}`
+      roomName: room?.nome || room?.name || `Stanza ${room?.id}`
     });
     setShowBookingModal(true);
   };
@@ -332,9 +339,18 @@ const WeeklyCalendar = () => {
               <div key={room.id} className="grid grid-cols-11 gap-0 border-b last:border-b-0">
                 {/* Nome stanza */}
                 <div className="p-4 bg-gray-50 border-r font-medium text-gray-900">
-                  <div className="text-sm">{room.nome || `Stanza ${room.id}`}</div>
-                  <div className="text-xs text-gray-500">
-                    {room.isVirtual || room.virtuale ? "Virtuale" : "Fisica"}
+                  <div className="text-sm">
+                    {(() => {
+                      const roomName = room.nome || room.name || `Stanza ${room.id}`;
+                      console.log('🏠 WeeklyCalendar debug - Room:', { 
+                        id: room.id, 
+                        nome: room.nome, 
+                        name: room.name,
+                        displayName: roomName,
+                        fullRoom: room 
+                      });
+                      return roomName;
+                    })()}
                   </div>
                 </div>
                 

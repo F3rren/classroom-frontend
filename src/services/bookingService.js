@@ -82,15 +82,29 @@ export async function getAllRooms() {
       // Arricchisci le stanze con i dati di blocco dalla cache
       roomsArray = roomsArray.map(room => {
         const cached = blockedRoomsCache.get(room.id);
+        
+        // Normalizziamo i campi per compatibilità
+        const normalizedRoom = {
+          ...room,
+          name: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'name' esista
+          nome: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'nome' esista
+          capacity: room.capienza || room.capacity,
+          capienza: room.capienza || room.capacity,
+          floor: room.piano || room.floor || 0,
+          piano: room.piano || room.floor || 0,
+          description: room.descrizione || room.description || '',
+          descrizione: room.descrizione || room.description || ''
+        };
+        
         if (cached) {
           return {
-            ...room,
+            ...normalizedRoom,
             isBlocked: cached.isBlocked,
             blockReason: cached.blockReason
           };
         }
         return {
-          ...room,
+          ...normalizedRoom,
           isBlocked: false,
           blockReason: null
         };
@@ -162,15 +176,29 @@ export async function getAllRoomsAdmin() {
       // Arricchisci le stanze con i dati di blocco dalla cache
       roomsArray = roomsArray.map(room => {
         const cached = blockedRoomsCache.get(room.id);
+        
+        // Normalizziamo i campi per compatibilità
+        const normalizedRoom = {
+          ...room,
+          name: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'name' esista
+          nome: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'nome' esista
+          capacity: room.capienza || room.capacity,
+          capienza: room.capienza || room.capacity,
+          floor: room.piano || room.floor || 0,
+          piano: room.piano || room.floor || 0,
+          description: room.descrizione || room.description || '',
+          descrizione: room.descrizione || room.description || ''
+        };
+        
         if (cached) {
           return {
-            ...room,
+            ...normalizedRoom,
             isBlocked: cached.isBlocked,
             blockReason: cached.blockReason
           };
         }
         return {
-          ...room,
+          ...normalizedRoom,
           isBlocked: false,
           blockReason: null
         };
@@ -371,15 +399,31 @@ export async function getVirtualRoomsDetailed() {
       if (Array.isArray(roomsArray)) {
         roomsArray = roomsArray.map(room => {
           const cached = blockedRoomsCache.get(room.id);
+          
+          // Normalizziamo i campi per compatibilità
+          const normalizedRoom = {
+            ...room,
+            name: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'name' esista
+            nome: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'nome' esista
+            capacity: room.capienza || room.capacity,
+            capienza: room.capienza || room.capacity,
+            floor: room.piano || room.floor || 0,
+            piano: room.piano || room.floor || 0,
+            description: room.descrizione || room.description || '',
+            descrizione: room.descrizione || room.description || '',
+            virtuale: Boolean(room.virtuale || room.isVirtual || true), // Per stanze virtuali
+            isVirtual: Boolean(room.virtuale || room.isVirtual || true)
+          };
+          
           if (cached) {
             return {
-              ...room,
+              ...normalizedRoom,
               isBlocked: cached.isBlocked,
               blockReason: cached.blockReason
             };
           }
           return {
-            ...room,
+            ...normalizedRoom,
             isBlocked: false,
             blockReason: null
           };

@@ -136,10 +136,22 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
 
         {/* Informazioni stanza */}
         <div className="px-6 py-3 bg-gray-50 border-b flex-shrink-0">
-          <h4 className="font-medium text-gray-900">{room.name || `Stanza ${room.id}`}</h4>
+          <h4 className="font-medium text-gray-900">
+            {(() => {
+              const roomName = room.name || room.nome || `Stanza ${room.id}`;
+              console.log('🏠 BookingModal debug - Room object:', { 
+                id: room.id, 
+                name: room.name, 
+                nome: room.nome,
+                displayName: roomName,
+                fullRoom: room 
+              });
+              return roomName;
+            })()}
+          </h4>
           <div className="text-sm text-gray-600 mt-1">
-            <span>Piano {room.floor}</span>
-            {room.capacity && <span> • {room.capacity} posti</span>}
+            <span>Piano {room.floor || room.piano}</span>
+            {(room.capacity || room.capienza) && <span> • {room.capacity || room.capienza} posti</span>}
           </div>
         </div>
 

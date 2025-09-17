@@ -236,7 +236,17 @@ const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
         <div className="flex items-start justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {room.name || `Stanza ${room.id}`}
+              {(() => {
+                const roomName = room.name || room.nome || `Stanza ${room.id}`;
+                console.log('🏠 RoomCard debug - Room object:', { 
+                  id: room.id, 
+                  name: room.name, 
+                  nome: room.nome,
+                  displayName: roomName,
+                  fullRoom: room 
+                });
+                return roomName;
+              })()}
             </h3>
             
             {/* Widget di stato migliorato */}

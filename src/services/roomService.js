@@ -18,10 +18,29 @@ export async function getRoomList() {
       if (response.ok) {
         const data = await response.json();
         console.log("Dati stanze ricevuti:", data);
+        
+        // Normalizziamo i dati delle stanze
+        let roomsArray = data.rooms || data || [];
+        if (!Array.isArray(roomsArray)) {
+          roomsArray = [];
+        }
+        
+        const normalizedRooms = roomsArray.map(room => ({
+          ...room,
+          name: room.nome || room.name || `Stanza ${room.id}`,
+          nome: room.nome || room.name || `Stanza ${room.id}`,
+          capacity: room.capienza || room.capacity,
+          capienza: room.capienza || room.capacity,
+          floor: room.piano || room.floor || 0,
+          piano: room.piano || room.floor || 0,
+          description: room.descrizione || room.description || '',
+          descrizione: room.descrizione || room.description || ''
+        }));
+        
         return {
           success: true,
           error: null,
-          data: data.rooms || data
+          data: normalizedRooms
         };
       } else {
         const errorData = await response.json();
