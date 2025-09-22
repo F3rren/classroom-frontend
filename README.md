@@ -1,86 +1,89 @@
-# Prenotazioni Aule - Frontend
+# Classroom Booking - Frontend
 
-Sistema di prenotazione aule universitarie sviluppato in React con Vite.
+⚠️ **Side Note:** This project is designed to work together with its [backend repository](https://github.com/F3rren/backend). It cannot function independently, as it requires a running backend server and database connection. 
 
-## Caratteristiche
+University classroom booking system developed in React with Vite.
 
-- ✅ **Integrazione Database**: Sistema completamente integrato con il database backend
-- ✅ **API /api/rooms/detailed**: Recupero completo delle stanze con prenotazioni
-- ✅ **Gestione Errori**: Messaggi chiari quando il database non è raggiungibile
-- ✅ **Gestione Utenti**: Sistema di autenticazione e autorizzazione
-- ✅ **Dashboard Admin**: Pannello amministrativo per gestione stanze e utenti
-- ✅ **Sistema di Filtri**: Ricerca avanzata per capacità, piano, disponibilità
-- ✅ **Responsive Design**: Interfaccia ottimizzata per desktop e mobile
+## Features
 
-## Struttura del Progetto
+- ✅ **Database Integration**: Fully integrated with the backend database  
+- ✅ **API /api/rooms/detailed**: Retrieve complete room data with bookings  
+- ✅ **Error Handling**: Clear messages when the database is unreachable  
+- ✅ **User Management**: Authentication and authorization system  
+- ✅ **Admin Dashboard**: Administrative panel for managing rooms and users  
+- ✅ **Filtering System**: Advanced search by capacity, floor, and availability  
+- ✅ **Responsive Design**: Optimized interface for desktop and mobile  
+
+## Project Structure
 
 ```
 src/
-├── components/          # Componenti React
-│   ├── Admin/          # Componenti amministrativi
-│   ├── Auth/           # Autenticazione
-│   ├── Common/         # Componenti comuni
-│   ├── Layout/         # Layout e navigazione
-│   └── Room/           # Gestione stanze
-├── hooks/              # Hook personalizzati
-├── services/           # Servizi API
-├── utils/              # Utilità
-└── pages/              # Pagine principali
+├── components/     # React components
+│ ├── Admin/        # Admin components
+│ ├── Auth/         # Authentication
+│ ├── Common/       # Shared components
+│ ├── Layout/       # Layout and navigation
+│ └── Room/         # Room management
+├── hooks/          # Custom hooks
+├── services/       # API services
+├── utils/          # Utilities
+└── pages/          # Main pages
 ```
 
-## Installazione e Avvio
+
+## Installation & Run
 
 ```bash
-# Installa le dipendenze
+# Install dependencies
 npm install
 
-# Avvia il server di sviluppo
+# Start development server
 npm run dev
 
-# Build per produzione
+# Build for production
 npm run build
 ```
 
 ## API Integration
 
-Il sistema è completamente integrato con il backend su `http://localhost:8080`:
+The system is fully integrated with the backend at http://localhost:8080:
 
-- `GET /api/rooms/detailed` - **Endpoint principale**: Recupera tutte le stanze con dettagli completi e prenotazioni
-- `GET /api/rooms` - **Endpoint di fallback**: Recupera dati base delle stanze se il principale non è disponibile
-- `GET /api/rooms/:id/details` - Dettagli di una singola stanza
+- `GET /api/rooms/detailed` - **Main endpoint: Retrieves all rooms with full details and bookings
+- `GET /api/rooms` - **Fallback endpoint**: Retrieves basic room data if the main one is unavailable
+- `GET /api/rooms/:id/details` - Retrieves details of a single room
 
-**⚠️ Requisiti Database:**
-- Il backend deve essere avviato e raggiungibile su localhost:8080
-- Il database deve contenere almeno una stanza per visualizzare i dati
-- L'endpoint `/api/rooms/detailed` deve essere implementato e funzionante
+**⚠️ Database Requirements:**
+- The backend must be running and accessible on localhost:8080
+- The database must contain at least one room to display data
+- The `/api/rooms/detailed` endpoint must be implemented and function
 
-**🚨 Gestione Errori:**
-- Se il backend non è raggiungibile, viene mostrato un messaggio di errore chiaro
-- Se il database è vuoto, viene suggerito di aggiungere stanze tramite il pannello admin
-- Nessun dato mock viene utilizzato - il sistema funziona esclusivamente con dati reali
+**🚨 Error Handling:**
+- If the backend is unreachable, a clear error message is displayed
+- If the database is empty, the system suggests adding rooms via the admin panel
+- No mock data is used – the system works exclusively with real data
 
-## Tecnologie
+## Technologies
 
 - React 18
 - Vite
 - Tailwind CSS
 - React Router DOM
 
-## Stato del Progetto
+## Project Status
 
-Il progetto è stato ottimizzato per utilizzare **esclusivamente dati dal database**:
+The project has been optimized to use **only real database data**:
 
-✅ **Rimosso:**
-- Tutti i dati mock e di fallback
-- Modalità demo
-- File duplicati e obsoleti
-- Componenti di test
-- File di documentazione ridondanti
+✅ **Removed:**
+- All mock and fallback data
+- Demo mode
+- Duplicate and obsolete files
+- Test components
+- Redundant documentation files
 
-✅ **Implementato:**
-- Sistema di connessione diretta al database
-- Gestione errori migliorata per problemi di connessione
-- Messaggi informativi chiari quando il database è vuoto
-- Sistema robusto che funziona solo con dati reali
+✅ **Implemented:**
+- Direct connection to the database
+- Improved error handling for connection issues
+- Clear informative messages when the database is empty
+- Robust system that works only with real data
 
-Il sistema ora richiede obbligatoriamente una connessione funzionante al backend con endpoint `/api/rooms/detailed` implementato.
+The system now strictly requires a working backend connection with the `/api/rooms/detailed` endpoint implemented.
