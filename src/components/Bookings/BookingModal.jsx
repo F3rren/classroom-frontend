@@ -23,25 +23,10 @@ const categorizeError = (error) => {
   return 'GENERIC';
 };
 
-const getEnhancedErrorMessage = (error, category) => {
-  const baseMessage = error?.message || error || 'Errore sconosciuto';
-  
-  switch (category) {
-    case 'AUTH':
-      return 'Sessione scaduta. Effettua nuovamente il login per continuare.';
-    case 'NETWORK':
-      return 'Problema di connessione. Verifica la tua connessione internet e riprova.';
-    case 'SERVER':
-      return 'Il server è temporaneamente non disponibile. Riprova tra qualche momento.';
-    case 'CONFLICT':
-      return 'La fascia oraria selezionata non è più disponibile. Scegli un altro orario.';
-    case 'VALIDATION':
-      if (baseMessage.includes('Data')) return 'Seleziona una data valida per la prenotazione.';
-      if (baseMessage.includes('orario')) return 'Seleziona una fascia oraria valida.';
-      return 'Controlla che tutti i campi obbligatori siano compilati correttamente.';
-    default:
-      return baseMessage.includes('prenotazione') ? baseMessage : `Si è verificato un errore: ${baseMessage}`;
-  }
+// Funzione semplificata per ottenere il messaggio di errore dal backend
+const getBackendErrorMessage = (result) => {
+  // Usa prima userMessage (progettato per gli utenti), poi message, poi error
+  return result.userMessage || result.message || result.error || 'Si è verificato un errore imprevisto.';
 };
 
 const isRetryableError = (category) => {
@@ -63,6 +48,8 @@ const TIME_SLOTS = [
 ];
 
 const BookingModal = ({ room, onClose, onSuccess }) => {
+  console.log('🎭 BookingModal aperto con room:', room);
+  
   const [formData, setFormData] = useState({
     date: '',
     timeSlot: '', // Sostituisce startTime e endTime
@@ -110,28 +97,28 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
             return;
           } else {
             const errorType = categorizeError(bookingsResult.error);
-            const enhancedMessage = getEnhancedErrorMessage(bookingsResult.error, errorType);
+            const backendMessage = getBackendErrorMessage(bookingsResult);
             
             if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
               attempts++;
               await new Promise(resolve => setTimeout(resolve, attempts * 1000));
               continue;
             } else {
-              setError(enhancedMessage);
+              setError(backendMessage);
               setRoomAvailabilityInfo(null);
               break;
             }
           }
         } catch (error) {
           const errorType = categorizeError(error.message);
-          const enhancedMessage = getEnhancedErrorMessage(error.message, errorType);
+          const backendMessage = error.message || 'Errore durante il controllo disponibilità';
           
           if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
             attempts++;
             await new Promise(resolve => setTimeout(resolve, attempts * 1000));
             continue;
           } else {
-            setError(enhancedMessage);
+            setError(backendMessage);
             setRoomAvailabilityInfo(null);
             break;
           }
@@ -161,14 +148,27 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    console.log('🚀 BookingModal - handleSubmit avviato');
+    console.log('🏠 Room data:', room);
+    console.log('📋 Form data:', formData);
+    
     // Validazioni
     if (!formData.date || !formData.timeSlot) {
-      const errorType = 'VALIDATION';
-      const enhancedMessage = getEnhancedErrorMessage('Data e fascia oraria sono obbligatorie', errorType);
-      setError(enhancedMessage);
+      console.log('❌ Validazione fallita - data o timeSlot mancanti');
+      setError('Data e fascia oraria sono obbligatorie');
       return;
     }
 
+    // Validazione data nel passato
+    const selectedDate = new Date(formData.date + 'T' + formData.startTime);
+    const now = new Date();
+    if (selectedDate <= now) {
+      console.log('❌ Validazione fallita - tentativo prenotazione nel passato');
+      setError('Non è possibile prenotare un\'aula per una data e ora già trascorse. Seleziona una data futura.');
+      return;
+    }
+
+    console.log('✅ Validazioni passate, inizio prenotazione...');
     setLoading(true);
     setError(null);
     setRetryAttempts(0);
@@ -184,13 +184,19 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
         }
 
         const bookingData = {
-          roomId: room.id,
+          aulaId: room.id, // Cambiato da roomId a aulaId per coerenza con backend
           date: formData.date,
           startTime: formData.startTime, // Popolato automaticamente dal timeSlot
           endTime: formData.endTime,     // Popolato automaticamente dal timeSlot
           purpose: formData.purpose.trim(),
-          corsoId: 1 // ID corso fisso
+          // corsoId: null // Rimosso - il controller richiede corsoId ma il service lo accetta null
         };
+
+        console.log('🎯 BookingModal - Tentativo prenotazione aula virtuale:', {
+          room: room,
+          bookingData: bookingData,
+          isVirtual: room?.isVirtual || room?.virtuale || false
+        });
 
         const result = await createBooking(bookingData);
 
@@ -200,32 +206,43 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
           return;
         } else {
           const errorType = categorizeError(result.error);
-          const enhancedMessage = getEnhancedErrorMessage(result.error, errorType);
+          const backendMessage = getBackendErrorMessage(result);
           
           if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
             attempts++;
             await new Promise(resolve => setTimeout(resolve, attempts * 1000));
             continue;
           } else {
-            setError(enhancedMessage);
+            setError(backendMessage);
             break;
           }
         }
       } catch (error) {
+        console.error('💥 Errore durante prenotazione:', error);
+        console.log('📊 Dettagli errore:', {
+          message: error.message,
+          stack: error.stack,
+          room: room,
+          formData: formData,
+          attempts: attempts
+        });
+        
         const errorType = categorizeError(error.message);
-        const enhancedMessage = getEnhancedErrorMessage(error.message, errorType);
+        const backendMessage = error.message || 'Errore di rete durante la prenotazione';
         
         if (isRetryableError(errorType) && attempts < maxAttempts - 1) {
           attempts++;
           await new Promise(resolve => setTimeout(resolve, attempts * 1000));
           continue;
         } else {
-          setError(enhancedMessage);
+          console.log('🔴 Impostazione errore finale:', backendMessage);
+          setError(backendMessage);
           break;
         }
       }
     }
     
+    console.log('🏁 handleSubmit terminato');
     setLoading(false);
     setIsRetrying(false);
     setRetryAttempts(0);

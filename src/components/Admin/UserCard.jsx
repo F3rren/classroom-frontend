@@ -25,10 +25,14 @@ export default function UserCard({ user, onEdit, onDelete, currentUser }) {
           
           <p className="text-gray-600 mb-1">{user.email}</p>
           <p className="text-sm text-gray-500">
-            Creato: {new Date(user.dataRegistrazione).toLocaleDateString('it-IT')}
+            Creato: {user.dataRegistrazione ? 
+              new Date(user.dataRegistrazione).toLocaleDateString('it-IT') : 
+              'Data non disponibile'}
           </p>
           <p className="text-sm text-gray-500">
-            Ultimo accesso: {new Date(user.ultimoAccesso).toLocaleDateString('it-IT')}
+            Ultimo accesso: {user.ultimoAccesso ? 
+              new Date(user.ultimoAccesso).toLocaleDateString('it-IT') : 
+              'Mai effettuato'}
           </p>
         </div>
         

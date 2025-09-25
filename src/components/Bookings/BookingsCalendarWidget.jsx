@@ -153,6 +153,10 @@ const BookingsCalendarWidget = ({ selectedRoomId, onDateSelect }) => {
 
   // Filtra le prenotazioni per il mese corrente e per la stanza selezionata (se specificata)
   const getBookingsForDate = (date) => {
+    if (!Array.isArray(bookings)) {
+      console.warn('⚠️ BookingsCalendarWidget: bookings non è un array');
+      return [];
+    }
     const dateStr = formatDateLocal(date);
     return bookings.filter(booking => {
       const bookingDate = booking.date;

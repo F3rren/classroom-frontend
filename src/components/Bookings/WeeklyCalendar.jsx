@@ -65,6 +65,10 @@ const WeeklyCalendar = () => {
   const [retryAttempts, setRetryAttempts] = useState(0);
   const [operationType, setOperationType] = useState(null);
 
+  // Debug logging per monitorare i tipi di dato
+  console.log('🔍 WeeklyCalendar render - rooms type:', typeof rooms, 'isArray:', Array.isArray(rooms));
+  console.log('🔍 WeeklyCalendar render - bookings type:', typeof bookings, 'isArray:', Array.isArray(bookings));
+
   // Fasce orarie fisse
   const timeSlots = [
     { id: 'morning', label: 'Mattina', startTime: '09:00', endTime: '13:00', hours: '9:00-13:00' },
@@ -146,17 +150,36 @@ const WeeklyCalendar = () => {
           // Carica stanze virtuali
           const roomsResult = await getVirtualRoomsDetailed();
           if (roomsResult.success) {
-            const virtualRooms = roomsResult.data || [];
+            let virtualRooms = roomsResult.data || [];
+            
+            // Assicurati che virtualRooms sia sempre un array
+            if (!Array.isArray(virtualRooms)) {
+              console.warn('⚠️ WeeklyCalendar: roomsResult.data non è un array:', virtualRooms);
+              virtualRooms = [];
+            }
+            
             setRooms(virtualRooms);
           } else {
+            console.error('❌ WeeklyCalendar: Errore caricamento stanze:', roomsResult.error);
+            setRooms([]); // Fallback su array vuoto
             throw new Error(roomsResult.error || 'Errore nel caricamento stanze virtuali');
           }
 
           // Carica prenotazioni
           const bookingsResult = await getAllBookings();
           if (bookingsResult.success) {
-            setBookings(bookingsResult.data || []);
+            let allBookings = bookingsResult.data || [];
+            
+            // Assicurati che allBookings sia sempre un array
+            if (!Array.isArray(allBookings)) {
+              console.warn('⚠️ WeeklyCalendar: bookingsResult.data non è un array:', allBookings);
+              allBookings = [];
+            }
+            
+            setBookings(allBookings);
           } else {
+            console.error('❌ WeeklyCalendar: Errore caricamento prenotazioni:', bookingsResult.error);
+            setBookings([]); // Fallback su array vuoto
             throw new Error(bookingsResult.error || 'Errore nel caricamento prenotazioni');
           }
 
@@ -181,6 +204,10 @@ const WeeklyCalendar = () => {
 
   // Verifica se uno slot è occupato
   const isSlotOccupied = (roomId, date, timeSlot) => {
+    if (!Array.isArray(bookings)) {
+      console.warn('⚠️ isSlotOccupied: bookings non è un array');
+      return false;
+    }
     const dateStr = formatDateLocal(date);
     return bookings.some(booking => {
       if (booking.stato === 'ANNULLATA') return false;
@@ -202,6 +229,10 @@ const WeeklyCalendar = () => {
 
   // Trova la prenotazione per uno slot specifico
   const findBookingForSlot = (roomId, date, timeSlot) => {
+    if (!Array.isArray(bookings)) {
+      console.warn('⚠️ findBookingForSlot: bookings non è un array');
+      return null;
+    }
     const dateStr = formatDateLocal(date);
     return bookings.find(booking => {
       if (booking.stato === 'ANNULLATA') return false;
@@ -223,6 +254,10 @@ const WeeklyCalendar = () => {
 
   // Trova i dettagli del blocco per una stanza
   const findBlockDetailsForRoom = (roomId) => {
+    if (!Array.isArray(rooms)) {
+      console.warn('⚠️ findBlockDetailsForRoom: rooms non è un array');
+      return null;
+    }
     const room = rooms.find(r => r.id === roomId);
     return room && room.isBlocked ? {
       reason: room.blockReason || 'Motivo non specificato',
@@ -233,7 +268,7 @@ const WeeklyCalendar = () => {
   // Gestisce il click su uno slot
   const handleSlotClick = (roomId, date, timeSlot) => {
     const isOccupied = isSlotOccupied(roomId, date, timeSlot);
-    const room = rooms.find(r => r.id === roomId);
+    const room = Array.isArray(rooms) ? rooms.find(r => r.id === roomId) : null;
     const isBlocked = room?.isBlocked;
     const isPast = date < new Date().setHours(0, 0, 0, 0);
     
@@ -374,7 +409,7 @@ const WeeklyCalendar = () => {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{getCalendarTitle()}</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Mostrando {rooms.length} aule virtuali
+              Mostrando {Array.isArray(rooms) ? rooms.length : 0} aule virtuali
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -443,13 +478,16 @@ const WeeklyCalendar = () => {
 
         {/* Griglia calendario */}
         <div className="max-h-96 overflow-y-auto">
-          {rooms.length === 0 ? (
+          {!Array.isArray(rooms) || rooms.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
               <div className="text-xl font-medium mb-2">
-                Nessuna aula virtuale disponibile
+                {!Array.isArray(rooms) ? 'Errore nel caricamento aule' : 'Nessuna aula virtuale disponibile'}
               </div>
               <p className="text-sm text-gray-400">
-                Non sono state configurate aule virtuali nel sistema
+                {!Array.isArray(rooms) 
+                  ? 'Si è verificato un errore durante il caricamento delle aule virtuali'
+                  : 'Non sono state configurate aule virtuali nel sistema'
+                }
               </p>
             </div>
           ) : (

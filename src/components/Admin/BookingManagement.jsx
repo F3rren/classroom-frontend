@@ -191,7 +191,7 @@ const BookingManagement = () => {
   };
 
   // Filtra le prenotazioni in base alla ricerca e al filtro di stato
-  const filteredBookings = bookings.filter(booking => {
+  const filteredBookings = Array.isArray(bookings) ? bookings.filter(booking => {
     const matchesSearch = !searchTerm || 
       booking.userName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.roomName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -202,7 +202,7 @@ const BookingManagement = () => {
       (statusFilter === 'cancelled' && booking.stato === 'ANNULLATA');
 
     return matchesSearch && matchesStatus;
-  });
+  }) : [];
 
   if (loading) {
     return (
@@ -339,7 +339,7 @@ const BookingManagement = () => {
                   <div className="flex-1">
                     <div className="flex items-center mb-2">
                       <h3 className="text-lg font-semibold text-gray-900 mr-3">
-                        {booking.roomName || `Stanza ${booking.roomId || booking.aulaId || 'N/A'}`}
+                        {booking.nomeAula || booking.roomName || `Stanza ${booking.roomId || booking.aulaId || 'Senza Nome'}`}
                       </h3>
                       <div className="flex items-center space-x-2">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(booking)}`}>

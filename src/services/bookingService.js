@@ -1,4 +1,120 @@
-// ====== SERVIZI STANZE ======
+// ===== UTILITY FUNCTIONS =====
+
+/**
+ * Genera un ID di richiesta univoco per il tracking
+ * @param {string} operation - Nome dell'operazione (es: 'GET_BOOKINGS', 'CREATE_BOOKING')
+ * @returns {string} - ID univoco
+ */
+function generateRequestId(operation = 'BOOKING') {
+  return `${operation}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Verifica se il token è presente e valido
+ * @returns {string|null} - Token se presente, null altrimenti
+ */
+function getValidToken() {
+  const token = localStorage.getItem("token");
+  if (!token || token.trim().length === 0) {
+    return null;
+  }
+  return token;
+}
+
+/**
+ * Crea headers standardizzati per le richieste booking
+ * @param {string} requestId - ID della richiesta
+ * @returns {object} - Headers object
+ */
+function createBookingHeaders(requestId) {
+  const token = getValidToken();
+  return {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+    "X-Request-ID": requestId
+  };
+}
+
+/**
+ * Gestisce la risposta standardizzata del backend per bookings
+ * @param {Response} response - Risposta fetch
+ * @param {string} requestId - ID della richiesta
+ * @param {string} errorMessage - Messaggio di errore default
+ * @returns {Promise<{success: boolean, error: string|null, data: any|null}>}
+ */
+async function handleBookingResponse(response, requestId, errorMessage) {
+  try {
+    const data = await response.json();
+    console.log(`🔍 [${requestId}] Risposta booking ricevuta:`, {
+      status: response.status,
+      success: data.success,
+      sessionId: data.sessionId,
+      hasData: !!data.data
+    });
+    
+    if (response.ok) {
+      // Gestione successo con struttura standardizzata
+      const resultData = data.success && data.data ? data.data : data;
+      
+      console.log(`✅ [${requestId}] Operazione booking completata con successo`);
+      return {
+        success: true,
+        error: null,
+        data: resultData
+      };
+    } else {
+      // Gestione errori con struttura standardizzata
+      const errorMsg = data.userMessage || data.message || errorMessage;
+      
+      // Log sessionId se presente per debugging
+      if (data.sessionId) {
+        console.log(`🔍 [${requestId}] SessionId errore:`, data.sessionId);
+      }
+      
+      console.error(`❌ [${requestId}] Errore booking - Status: ${response.status}, Messaggio:`, errorMsg);
+      return {
+        success: false,
+        error: errorMsg,
+        data: null
+      };
+    }
+  } catch (parseError) {
+    console.error(`❌ [${requestId}] Errore parsing risposta booking:`, parseError);
+    return {
+      success: false,
+      error: "Errore nella comunicazione con il server",
+      data: null
+    };
+  }
+}
+
+/**
+ * Gestisce errori di rete per bookings
+ * @param {Error} error - Errore di rete
+ * @param {string} requestId - ID della richiesta
+ * @returns {{success: boolean, error: string, data: null}}
+ */
+function handleBookingNetworkError(error, requestId) {
+  console.error(`🌐 [${requestId}] Errore di rete booking:`, error);
+  
+  let errorMessage = "Errore di connessione al server";
+  
+  if (error.name === "TypeError" && error.message.includes("fetch")) {
+    errorMessage = "Impossibile connettersi al server. Verifica la connessione internet.";
+  } else if (error.name === "AbortError") {
+    errorMessage = "Richiesta annullata. Riprova.";
+  } else if (error.message.includes("timeout")) {
+    errorMessage = "Timeout di connessione. Il server potrebbe essere sovraccarico.";
+  }
+  
+  return {
+    success: false,
+    error: errorMessage,
+    data: null
+  };
+}
+
+// ===== ROOM CACHE MANAGEMENT =====
 
 // Cache locale per le stanze bloccate (workaround per backend che non restituisce i dati)
 let blockedRoomsCache = new Map(); // Map<roomId, {isBlocked: boolean, blockReason: string}>
@@ -19,7 +135,7 @@ function updateBlockedRoomCache(roomId, isBlocked, blockReason = null) {
   // Salva in localStorage per persistenza
   try {
     localStorage.setItem('blockedRoomsCache', JSON.stringify(Array.from(blockedRoomsCache.entries())));
-  } catch (e) {
+  } catch {
     console.warn('⚠️ Impossibile salvare cache in localStorage');
   }
 }
@@ -33,7 +149,7 @@ function loadBlockedRoomCache() {
       blockedRoomsCache = new Map(entries);
       console.log('🔒 Cache caricata da localStorage:', blockedRoomsCache.size, 'stanze');
     }
-  } catch (e) {
+  } catch {
     console.warn('⚠️ Errore caricamento cache da localStorage');
     blockedRoomsCache = new Map();
   }
@@ -42,52 +158,65 @@ function loadBlockedRoomCache() {
 // Carica la cache all'avvio
 loadBlockedRoomCache();
 
-// Funzione per recuperare tutte le stanze
+/**
+ * Recupera tutte le stanze (con cache blocchi)
+ * @returns {Promise<{success: boolean, error: string|null, data: array|null}>}
+ */
 export async function getAllRooms() {
-  try {
-    if (!localStorage.getItem("token")) {
-      return {
-        success: false,
-        error: "Token mancante. Effettua il login.",
-        data: null
-      };
-    }
+  const requestId = generateRequestId('GET_ALL_ROOMS');
+  console.log(`🏠 [${requestId}] Avvio recupero tutte le stanze...`);
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per getAllRooms`);
+    return {
+      success: false,
+      error: "Token mancante. Effettua il login.",
+      data: null
+    };
+  }
 
+  try {
+    console.log(`📡 [${requestId}] Invio richiesta a /api/rooms`);
+    
     const response = await fetch("/api/rooms", {
       method: "GET",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
-      },
+      headers: createBookingHeaders(requestId)
     });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("🏠 Risposta getAllRooms:", data);
-      
-      // Gestisci diversi formati di risposta
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nel caricamento delle stanze"
+    );
+    
+    // Post-elaborazione per normalizzare e arricchire con cache
+    if (result.success && result.data) {
       let roomsArray = [];
       
-      if (Array.isArray(data)) {
-        roomsArray = data;
-      } else if (data.rooms && Array.isArray(data.rooms)) {
-        roomsArray = data.rooms;
-      } else if (data.aule && Array.isArray(data.aule)) {
-        roomsArray = data.aule;
+      if (Array.isArray(result.data)) {
+        roomsArray = result.data;
+      } else if (Array.isArray(result.data.rooms)) {
+        // Fallback per strutture legacy
+        console.warn(`⚠️ [${requestId}] Usando struttura rooms legacy`);
+        roomsArray = result.data.rooms;
       } else {
-        console.warn("⚠️ Formato risposta rooms inaspettato:", data);
+        console.warn(`⚠️ [${requestId}] Formato risposta inaspettato, usando array vuoto`);
         roomsArray = [];
       }
       
-      // Arricchisci le stanze con i dati di blocco dalla cache
-      roomsArray = roomsArray.map(room => {
+      // Arricchimento con cache blocchi
+      const enrichedRooms = roomsArray.map(room => {
         const cached = blockedRoomsCache.get(room.id);
         
-        // Normalizziamo i campi per compatibilità
+        // Normalizzazione campi per compatibilità
         const normalizedRoom = {
           ...room,
-          name: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'name' esista
-          nome: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'nome' esista
+          name: room.nome || room.name || `Stanza ${room.id}`,
+          nome: room.nome || room.name || `Stanza ${room.id}`,
           capacity: room.capienza || room.capacity,
           capienza: room.capienza || room.capacity,
           floor: room.piano || room.floor || 0,
@@ -110,29 +239,16 @@ export async function getAllRooms() {
         };
       });
       
-      console.log("🔒 Stanze getAllRooms arricchite con cache:", roomsArray.filter(r => r.isBlocked));
+      const blockedCount = enrichedRooms.filter(r => r.isBlocked).length;
+      console.log(`🔒 [${requestId}] Stanze arricchite con cache: ${enrichedRooms.length} totali, ${blockedCount} bloccate`);
       
-      return {
-        success: true,
-        error: null,
-        data: roomsArray
-      };
-    } else {
-      const errorData = await response.json();
-      return {
-        success: false,
-        error: errorData.message || "Errore nel caricamento delle stanze",
-        data: null
-      };
+      result.data = enrichedRooms;
     }
     
+    return result;
+    
   } catch (err) {
-    console.error("Errore di rete:", err);
-    return {
-      success: false,
-      error: "Errore di connessione al server",
-      data: null
-    };
+    return handleBookingNetworkError(err, requestId);
   }
 }
 
@@ -164,6 +280,9 @@ export async function getAllRoomsAdmin() {
       
       if (Array.isArray(data)) {
         roomsArray = data;
+      } else if (data.data && data.data.rooms && Array.isArray(data.data.rooms)) {
+        // Formato backend: {data: {rooms: [...], totalRooms: n}}
+        roomsArray = data.data.rooms;
       } else if (data.rooms && Array.isArray(data.rooms)) {
         roomsArray = data.rooms;
       } else if (data.aule && Array.isArray(data.aule)) {
@@ -300,159 +419,288 @@ export async function getRoomsDetailed() {
   }
 }
 
-// Funzione per recuperare solo le stanze fisiche con dettagli
-export async function getPhysicalRoomsDetailed() {
-  try {
-    if (!localStorage.getItem("token")) {
-      return {
-        success: false,
-        error: "Token mancante. Effettua il login.",
-        data: null
-      };
-    }
+// ===== FUNZIONI PER STANZE FISICHE =====
 
-    const response = await fetch("/api/rooms/physical/detailed", {
-      method: "GET",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("🏠 Risposta getPhysicalRoomsDetailed:", data);
-      
-      let roomsArray = data.rooms || data;
-      
-      // Arricchisci le stanze con i dati di blocco dalla cache
-      if (Array.isArray(roomsArray)) {
-        roomsArray = roomsArray.map(room => {
-          const cached = blockedRoomsCache.get(room.id);
-          if (cached) {
-            return {
-              ...room,
-              isBlocked: cached.isBlocked,
-              blockReason: cached.blockReason
-            };
-          }
-          return {
-            ...room,
-            isBlocked: false,
-            blockReason: null
-          };
-        });
-        
-        console.log("🔒 Stanze fisiche detailed arricchite con cache:", roomsArray.filter(r => r.isBlocked));
-      }
-      
-      return {
-        success: true,
-        error: null,
-        data: roomsArray
-      };
-    } else {
-      const errorData = await response.json();
-      return {
-        success: false,
-        error: errorData.message || "Errore nel caricamento delle stanze fisiche",
-        data: null
-      };
-    }
-    
-  } catch (err) {
-    console.error("Errore di rete:", err);
+/**
+ * Recupera le stanze fisiche
+ * @returns {Promise<{success: boolean, error: string|null, data: array|null}>}
+ */
+export async function getPhysicalRooms() {
+  const requestId = generateRequestId('GET_PHYSICAL_ROOMS');
+  console.log(`🏠 [${requestId}] Avvio recupero stanze fisiche...`);
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per getPhysicalRooms`);
     return {
       success: false,
-      error: "Errore di connessione al server",
+      error: "Token mancante. Effettua il login.",
       data: null
     };
+  }
+
+  try {
+    console.log(`📡 [${requestId}] Invio richiesta a /api/rooms/physical`);
+    
+    const response = await fetch("/api/rooms/physical", {
+      method: "GET",
+      headers: createBookingHeaders(requestId)
+    });
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nel caricamento delle stanze fisiche"
+    );
+    
+    // Post-elaborazione per normalizzare i dati delle stanze fisiche
+    if (result.success && result.data) {
+      let roomsArray = [];
+      
+      if (Array.isArray(result.data)) {
+        roomsArray = result.data;
+      } else if (Array.isArray(result.data.rooms)) {
+        console.log(`📊 [${requestId}] Usando struttura backend standard`);
+        roomsArray = result.data.rooms;
+      } else {
+        console.warn(`⚠️ [${requestId}] Struttura rooms non riconosciuta, usando array vuoto`);
+        roomsArray = [];
+      }
+      
+      // Normalizzazione dati semplice
+      const normalizedRooms = roomsArray.map(room => ({
+        id: room.id,
+        nome: room.nome || room.name || room.nomeAula || `Stanza ${room.id}`,
+        name: room.name || room.nome || room.nomeAula || `Stanza ${room.id}`,
+        capienza: room.capienza || room.capacity || 0,
+        capacity: room.capacity || room.capienza || 0,
+        piano: room.piano || room.location || '',
+        location: room.location || room.piano || '',
+        attiva: room.attiva !== undefined ? room.attiva : (room.active !== undefined ? room.active : true),
+        active: room.active !== undefined ? room.active : (room.attiva !== undefined ? room.attiva : true),
+        ...room
+      }));
+      
+      console.log(`📊 [${requestId}] Normalizzate ${normalizedRooms.length} stanze fisiche`);
+      
+      result.data = normalizedRooms;
+    }
+    
+    return result;
+    
+  } catch (err) {
+    return handleBookingNetworkError(err, requestId);
+  }
+}
+
+// Funzione per recuperare solo le stanze fisiche con dettagli
+/**
+ * Recupera le stanze fisiche con dettagli
+ * @returns {Promise<{success: boolean, error: string|null, data: array|null}>}
+ */
+export async function getPhysicalRoomsDetailed() {
+  const requestId = generateRequestId('GET_PHYSICAL_ROOMS_DETAILED');
+  console.log(`🏠 [${requestId}] Avvio recupero stanze fisiche dettagliate...`);
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per getPhysicalRoomsDetailed`);
+    return {
+      success: false,
+      error: "Token mancante. Effettua il login.",
+      data: null
+    };
+  }
+
+  try {
+    console.log(`📡 [${requestId}] Invio richiesta a /api/rooms/physical/detailed`);
+    
+    const response = await fetch("/api/rooms/physical/detailed", {
+      method: "GET",
+      headers: createBookingHeaders(requestId)
+    });
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nel caricamento delle stanze fisiche"
+    );
+    
+    // Post-elaborazione per normalizzare e arricchire stanze fisiche
+    if (result.success && result.data) {
+      let roomsArray = [];
+      
+      // Gestisci diversi formati di risposta dal backend
+      if (Array.isArray(result.data)) {
+        roomsArray = result.data;
+      } else if (Array.isArray(result.data.rooms)) {
+        console.log(`📊 [${requestId}] Usando struttura backend standard`);
+        roomsArray = result.data.rooms;
+      } else if (Array.isArray(result.data.data)) {
+        console.warn(`⚠️ [${requestId}] Usando struttura data legacy`);
+        roomsArray = result.data.data;
+      } else {
+        console.warn(`⚠️ [${requestId}] Formato stanze non riconosciuto, usando array vuoto`);
+        roomsArray = [];
+      }
+      
+      // Arricchisci le stanze con i dati di blocco dalla cache e normalizza
+      const enrichedRooms = roomsArray.map(room => {
+        const cached = blockedRoomsCache.get(room.id);
+        
+        // Normalizziamo i campi per compatibilità
+        return {
+          id: room.id,
+          nome: room.nome || room.name || room.nomeAula || `Stanza ${room.id}`,
+          name: room.name || room.nome || room.nomeAula || `Stanza ${room.id}`,
+          nomeAula: room.nomeAula || room.nome || room.name || `Stanza ${room.id}`,
+          
+          // Capacità
+          capienza: room.capienza || room.capacity || 0,
+          capacity: room.capacity || room.capienza || 0,
+          
+          // Posizione
+          posizione: room.posizione || room.location || room.piano || '',
+          location: room.location || room.posizione || room.piano || '',
+          piano: room.piano || room.posizione || room.location || '',
+          
+          // Attrezzature
+          attrezzature: room.attrezzature || room.equipment || [],
+          equipment: room.equipment || room.attrezzature || [],
+          
+          // Stato
+          attiva: room.attiva !== undefined ? room.attiva : (room.active !== undefined ? room.active : true),
+          active: room.active !== undefined ? room.active : (room.attiva !== undefined ? room.attiva : true),
+          
+          // Informazioni di blocco dalla cache
+          isBlocked: cached ? cached.isBlocked : false,
+          blockedUntil: cached ? cached.blockedUntil : null,
+          blockReason: cached ? cached.blockReason : null,
+          
+          // Mantieni tutti gli altri campi originali
+          ...room
+        };
+      });
+      
+      console.log(`📊 [${requestId}] Trovate ${enrichedRooms.length} stanze fisiche`);
+      
+      result.data = enrichedRooms;
+    }
+    
+    return result;
+    
+  } catch (err) {
+    return handleBookingNetworkError(err, requestId);
   }
 }
 
 // Funzione per recuperare solo le stanze virtuali con dettagli
+/**
+ * Recupera le stanze virtuali con dettagli
+ * @returns {Promise<{success: boolean, error: string|null, data: array|null}>}
+ */
 export async function getVirtualRoomsDetailed() {
-  try {
-    if (!localStorage.getItem("token")) {
-      return {
-        success: false,
-        error: "Token mancante. Effettua il login.",
-        data: null
-      };
-    }
-
-    const response = await fetch("/api/rooms/virtual/detailed", {
-      method: "GET",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("🏠 Risposta getVirtualRoomsDetailed:", data);
-      
-      let roomsArray = data.rooms || data;
-      
-      // Arricchisci le stanze con i dati di blocco dalla cache
-      if (Array.isArray(roomsArray)) {
-        roomsArray = roomsArray.map(room => {
-          const cached = blockedRoomsCache.get(room.id);
-          
-          // Normalizziamo i campi per compatibilità
-          const normalizedRoom = {
-            ...room,
-            name: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'name' esista
-            nome: room.nome || room.name || `Stanza ${room.id}`, // Assicura che 'nome' esista
-            capacity: room.capienza || room.capacity,
-            capienza: room.capienza || room.capacity,
-            floor: room.piano || room.floor || 0,
-            piano: room.piano || room.floor || 0,
-            description: room.descrizione || room.description || '',
-            descrizione: room.descrizione || room.description || '',
-            virtuale: Boolean(room.virtuale || room.isVirtual || true), // Per stanze virtuali
-            isVirtual: Boolean(room.virtuale || room.isVirtual || true)
-          };
-          
-          if (cached) {
-            return {
-              ...normalizedRoom,
-              isBlocked: cached.isBlocked,
-              blockReason: cached.blockReason
-            };
-          }
-          return {
-            ...normalizedRoom,
-            isBlocked: false,
-            blockReason: null
-          };
-        });
-        
-        console.log("🔒 Stanze virtuali detailed arricchite con cache:", roomsArray.filter(r => r.isBlocked));
-      }
-      
-      return {
-        success: true,
-        error: null,
-        data: roomsArray
-      };
-    } else {
-      const errorData = await response.json();
-      return {
-        success: false,
-        error: errorData.message || "Errore nel caricamento delle stanze virtuali",
-        data: null
-      };
-    }
-    
-  } catch (err) {
-    console.error("Errore di rete:", err);
+  const requestId = generateRequestId('GET_VIRTUAL_ROOMS_DETAILED');
+  console.log(`🏠 [${requestId}] Avvio recupero stanze virtuali dettagliate...`);
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per getVirtualRoomsDetailed`);
     return {
       success: false,
-      error: "Errore di connessione al server",
+      error: "Token mancante. Effettua il login.",
       data: null
     };
+  }
+
+  try {
+    console.log(`📡 [${requestId}] Invio richiesta a /api/rooms/virtual/detailed`);
+    
+    const response = await fetch("/api/rooms/virtual/detailed", {
+      method: "GET",
+      headers: createBookingHeaders(requestId)
+    });
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nel caricamento delle stanze virtuali"
+    );
+    
+    // Post-elaborazione per normalizzare e arricchire stanze virtuali
+    if (result.success && result.data) {
+      let roomsArray = [];
+      
+      // Gestisci diversi formati di risposta dal backend
+      if (Array.isArray(result.data)) {
+        roomsArray = result.data;
+      } else if (Array.isArray(result.data.rooms)) {
+        console.warn(`⚠️ [${requestId}] Usando struttura rooms legacy`);
+        roomsArray = result.data.rooms;
+      } else if (Array.isArray(result.data.data)) {
+        console.warn(`⚠️ [${requestId}] Usando struttura data legacy`);
+        roomsArray = result.data.data;
+      } else {
+        console.warn(`⚠️ [${requestId}] Formato stanze non riconosciuto, usando array vuoto`);
+        roomsArray = [];
+      }
+      
+      // Arricchisci le stanze con i dati di blocco dalla cache e normalizza
+      const enrichedRooms = roomsArray.map(room => {
+        const cached = blockedRoomsCache.get(room.id);
+        
+        // Normalizziamo i campi per compatibilità
+        return {
+          id: room.id,
+          nome: room.nome || room.name || room.nomeAula || `Stanza ${room.id}`,
+          name: room.name || room.nome || room.nomeAula || `Stanza ${room.id}`,
+          nomeAula: room.nomeAula || room.nome || room.name || `Stanza ${room.id}`,
+          
+          // Capacità
+          capienza: room.capienza || room.capacity || 0,
+          capacity: room.capacity || room.capienza || 0,
+          
+          // Posizione
+          posizione: room.posizione || room.location || room.piano || '',
+          location: room.location || room.posizione || room.piano || '',
+          piano: room.piano || room.posizione || room.location || '',
+          
+          // Attrezzature
+          attrezzature: room.attrezzature || room.equipment || [],
+          equipment: room.equipment || room.attrezzature || [],
+          
+          // Stato
+          attiva: room.attiva !== undefined ? room.attiva : (room.active !== undefined ? room.active : true),
+          active: room.active !== undefined ? room.active : (room.attiva !== undefined ? room.attiva : true),
+          
+          // Informazioni di blocco dalla cache
+          isBlocked: cached ? cached.isBlocked : false,
+          blockedUntil: cached ? cached.blockedUntil : null,
+          blockReason: cached ? cached.blockReason : null,
+          
+          // Mantieni tutti gli altri campi originali
+          ...room
+        };
+      });
+      
+      console.log(`📊 [${requestId}] Trovate ${enrichedRooms.length} stanze virtuali`);
+      
+      result.data = enrichedRooms;
+    }
+    
+    return result;
+    
+  } catch (err) {
+    return handleBookingNetworkError(err, requestId);
   }
 }
 
@@ -501,688 +749,674 @@ export async function getRoomDetails(roomId) {
   }
 }
 
+// ===== BOOKING DATA NORMALIZATION =====
+
+/**
+ * Normalizza i dati di una prenotazione per garantire consistenza
+ * @param {object} bookingData - Dati grezzi della prenotazione dal backend
+ * @returns {object|null} - Oggetto prenotazione normalizzato
+ */
+function normalizeBookingData(bookingData) {
+  if (!bookingData) {
+    console.warn('⚠️ normalizeBookingData: bookingData è null o undefined');
+    return null;
+  }
+
+  try {
+    const normalized = {
+      // ID obbligatorio
+      id: bookingData.id,
+      
+      // IDs delle entità collegate
+      aulaId: bookingData.aulaId || bookingData.roomId || bookingData.stanzaId,
+      roomId: bookingData.roomId || bookingData.aulaId || bookingData.stanzaId,
+      corsoId: bookingData.corsoId || bookingData.courseId,
+      courseId: bookingData.courseId || bookingData.corsoId,
+      utenteId: bookingData.utenteId || bookingData.userId,
+      userId: bookingData.userId || bookingData.utenteId,
+      
+      // Date e orari - con fallback multipli
+      inizio: bookingData.inizio || bookingData.startTime || bookingData.dataInizio,
+      fine: bookingData.fine || bookingData.endTime || bookingData.dataFine,
+      startTime: bookingData.startTime || bookingData.inizio || bookingData.dataInizio,
+      endTime: bookingData.endTime || bookingData.fine || bookingData.dataFine,
+      
+      // Data della prenotazione - estratta da inizio se non presente
+      data: bookingData.data || bookingData.date || bookingData.dataPrenotazione || 
+            (bookingData.inizio ? bookingData.inizio.split('T')[0] : null),
+      date: bookingData.date || bookingData.data || bookingData.dataPrenotazione ||
+            (bookingData.inizio ? bookingData.inizio.split('T')[0] : null),
+      
+      // Descrizione
+      descrizione: bookingData.descrizione || bookingData.description || '',
+      description: bookingData.description || bookingData.descrizione || '',
+      
+      // Status
+      stato: bookingData.stato || bookingData.status || 'confermata',
+      status: bookingData.status || bookingData.stato || 'confermata',
+      
+      // Informazioni aula
+      nomeAula: bookingData.nomeAula || bookingData.roomName || bookingData.aulaName,
+      roomName: bookingData.roomName || bookingData.nomeAula || bookingData.aulaName,
+      
+      // Informazioni corso
+      nomeCorso: bookingData.nomeCorso || bookingData.courseName || bookingData.courseTitle,
+      courseName: bookingData.courseName || bookingData.nomeCorso || bookingData.courseTitle,
+      
+      // Timestamp
+      dataCreazione: bookingData.dataCreazione || bookingData.createdAt || new Date().toISOString(),
+      createdAt: bookingData.createdAt || bookingData.dataCreazione || new Date().toISOString(),
+      
+      // Mantieni tutti gli altri campi originali
+      ...bookingData
+    };
+    
+    // Validazione finale
+    if (!normalized.id) {
+      console.warn('⚠️ normalizeBookingData: Prenotazione senza ID valido:', bookingData);
+      return null;
+    }
+    
+    return normalized;
+    
+  } catch (error) {
+    console.error('❌ Errore durante normalizzazione dati prenotazione:', error, bookingData);
+    return null;
+  }
+}
+
 // ====== SERVIZI PRENOTAZIONI ======
 
 // Funzione per recuperare le prenotazioni dell'utente corrente
+/**
+ * Recupera le prenotazioni dell'utente corrente
+ * @returns {Promise<{success: boolean, error: string|null, data: array|null}>}
+ */
 export async function getMyBookings() {
-  try {
-    if (!localStorage.getItem("token")) {
-      return {
-        success: false,
-        error: "Token mancante. Effettua il login.",
-        data: null
-      };
-    }
+  const requestId = generateRequestId('GET_MY_BOOKINGS');
+  console.log(`📅 [${requestId}] Avvio recupero mie prenotazioni...`);
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per getMyBookings`);
+    return {
+      success: false,
+      error: "Token mancante. Effettua il login.",
+      data: null
+    };
+  }
 
+  try {
+    console.log(`📡 [${requestId}] Invio richiesta a /api/prenotazioni/mie`);
+    
     const response = await fetch("/api/prenotazioni/mie", {
       method: "GET",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
-      },
+      headers: createBookingHeaders(requestId)
     });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("📋 RISPOSTA COMPLETA getMyBookings:", data);
-      console.log("📋 TIPO DI DATA:", typeof data, Array.isArray(data));
-      
-      // Gestisci diversi formati di risposta
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nel caricamento delle tue prenotazioni"
+    );
+    
+    // Post-elaborazione per normalizzare prenotazioni
+    if (result.success && result.data) {
       let bookingsArray = [];
       
-      if (Array.isArray(data)) {
-        // Se data è già un array
-        bookingsArray = data;
-        console.log("📋 Data è array diretto, lunghezza:", bookingsArray.length);
-      } else if (data.bookings && Array.isArray(data.bookings)) {
-        // Se data ha una proprietà bookings che è un array
-        bookingsArray = data.bookings;
-        console.log("📋 Usando data.bookings, lunghezza:", bookingsArray.length);
-      } else if (data.prenotazioni && Array.isArray(data.prenotazioni)) {
-        // Se data ha una proprietà prenotazioni che è un array
-        bookingsArray = data.prenotazioni;
-        console.log("📋 Usando data.prenotazioni, lunghezza:", bookingsArray.length);
+      if (Array.isArray(result.data)) {
+        bookingsArray = result.data;
+      } else if (Array.isArray(result.data.prenotazioni)) {
+        console.warn(`⚠️ [${requestId}] Usando struttura prenotazioni legacy`);
+        bookingsArray = result.data.prenotazioni;
+      } else if (Array.isArray(result.data.bookings)) {
+        console.warn(`⚠️ [${requestId}] Usando struttura bookings legacy`);
+        bookingsArray = result.data.bookings;
       } else {
-        // Fallback: array vuoto
-        console.warn("⚠️ Formato risposta inaspettato:", data);
+        console.warn(`⚠️ [${requestId}] Formato prenotazioni non riconosciuto, usando array vuoto`);
         bookingsArray = [];
       }
       
-      console.log("📋 BOOKINGS ARRAY FINALE:", bookingsArray);
+      // Normalizzazione e ordinamento per data
+      const normalizedBookings = bookingsArray
+        .map(booking => normalizeBookingData(booking))
+        .filter(booking => booking !== null)
+        .sort((a, b) => new Date(`${b.inizio}`) - new Date(`${a.inizio}`)); // Più recenti prima
       
-      // Ottieni informazioni sulle stanze per i nomi
-      const roomsResponse = await getAllRooms();
-      const rooms = roomsResponse.success ? roomsResponse.data : [];
-      console.log("🏠 Risposta getAllRooms per nomi:", roomsResponse);
-      console.log("🏠 Dati stanze ricevuti:", rooms);
+      console.log(`� [${requestId}] Trovate ${normalizedBookings.length} prenotazioni`);
       
-      const roomsMap = {};
-      
-      // Crea una mappa ID -> nome stanza
-      rooms.forEach(room => {
-        console.log("🏠 Elaborando stanza:", room);
-        const roomId = room.id || room.aulaId;
-        const roomName = room.name || room.nome || room.nomeAula || `Stanza ${roomId}`;
-        roomsMap[roomId] = roomName;
-        console.log(`🏠 Mappato ID ${roomId} -> "${roomName}"`);
-      });
-      
-      console.log("🏠 Mappa stanze finale:", roomsMap);
-      
-      // Mappa i dati del backend al formato frontend
-      const normalizedBookings = bookingsArray.map(booking => {
-        console.log("📋 Prenotazione grezza dal backend:", booking);
-        console.log("📋 Tutte le proprietà disponibili:", Object.keys(booking));
-        
-        // Prova diverse proprietà per l'ID della stanza
-        let aulaId;
-        
-        if (booking.aulaId) {
-          aulaId = booking.aulaId;
-        } else if (booking.roomId) {
-          aulaId = booking.roomId;
-        } else if (booking.aula && booking.aula.id) {
-          // Il backend restituisce un oggetto aula con id
-          aulaId = booking.aula.id;
-          console.log(`📋 ID stanza da booking.aula.id: ${aulaId}`);
-        } else if (booking.aula_id) {
-          aulaId = booking.aula_id;
-        } else if (booking.stanza_id) {
-          aulaId = booking.stanza_id;
-        } else if (booking.idAula) {
-          aulaId = booking.idAula;
-        } else {
-          aulaId = undefined;
-        }
-        
-        console.log(`📋 ID stanza estratto: ${aulaId} (da: aulaId=${booking.aulaId}, roomId=${booking.roomId}, aula.id=${booking.aula?.id}, aula_id=${booking.aula_id}, stanza_id=${booking.stanza_id}, idAula=${booking.idAula})`);
-        
-        // Prova diverse fonti per il nome della stanza
-        let roomName;
-        
-        if (booking.nomeAula) {
-          roomName = booking.nomeAula;
-          console.log(`📋 Nome dalla prenotazione (nomeAula): "${roomName}"`);
-        } else if (booking.roomName) {
-          roomName = booking.roomName;
-          console.log(`📋 Nome dalla prenotazione (roomName): "${roomName}"`);
-        } else if (roomsMap[aulaId]) {
-          roomName = roomsMap[aulaId];
-          console.log(`📋 Nome dalla mappa stanze per ID ${aulaId}: "${roomName}"`);
-        } else {
-          roomName = aulaId ? `Stanza ${aulaId}` : 'Stanza sconosciuta';
-          console.log(`📋 Nome fallback per ID ${aulaId}: "${roomName}"`);
-        }
-        
-        return {
-          id: booking.id,
-          roomId: aulaId,
-          roomName: roomName,
-          date: booking.inizio ? booking.inizio.split('T')[0] : booking.date,
-          startTime: booking.inizio ? booking.inizio.split('T')[1]?.slice(0, 5) : booking.startTime,
-          endTime: booking.fine ? booking.fine.split('T')[1]?.slice(0, 5) : booking.endTime,
-          purpose: booking.descrizione || booking.purpose,
-          status: booking.stato || booking.status || 'active',
-          stato: booking.stato || booking.status || 'PRENOTATA', // ✅ Aggiungiamo anche il campo 'stato'
-          inizio: booking.inizio, // Mantieni anche il formato originale per compatibilità
-          fine: booking.fine,
-          aulaId: aulaId,
-          descrizione: booking.descrizione || booking.purpose,
-          corsoId: booking.corsoId || 1
-        };
-      });
-      
-      console.log("🔄 Prenotazioni normalizzate:", normalizedBookings);
-      
-      return {
-        success: true,
-        error: null,
-        data: normalizedBookings
-      };
-    } else {
-      const errorData = await response.json();
+      result.data = normalizedBookings;
+    }
+    
+    return result;
+    
+  } catch (err) {
+    return handleBookingNetworkError(err, requestId);
+  }
+}
+// Funzione per creare una nuova prenotazione
+/**
+ * Crea una nuova prenotazione
+ * @param {object} bookingData - Dati della prenotazione da creare
+ * @returns {Promise<{success: boolean, error: string|null, data: object|null}>}
+ */
+export async function createBooking(bookingData) {
+  const requestId = generateRequestId('CREATE_BOOKING');
+  console.log(`➕ [${requestId}] Avvio creazione prenotazione:`, {
+    aulaId: bookingData?.aulaId,
+    date: bookingData?.date,
+    startTime: bookingData?.startTime,
+    endTime: bookingData?.endTime,
+    purpose: bookingData?.purpose?.substring(0, 50) + '...'
+  });
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per createBooking`);
+    return {
+      success: false,
+      error: "Token mancante. Effettua il login.",
+      data: null
+    };
+  }
+  
+  // Validazione dati prenotazione
+  if (!bookingData || typeof bookingData !== 'object') {
+    console.warn(`⚠️ [${requestId}] Dati prenotazione non validi`);
+    return {
+      success: false,
+      error: "Dati prenotazione non forniti o non validi.",
+      data: null
+    };
+  }
+  
+  // Validazione campi obbligatori per formato frontend
+  const requiredFields = ['aulaId', 'date', 'startTime', 'endTime'];
+  const missingFields = requiredFields.filter(field => !bookingData[field]);
+  
+  if (missingFields.length > 0) {
+    console.warn(`⚠️ [${requestId}] Campi obbligatori mancanti:`, missingFields);
+    return {
+      success: false,
+      error: `Campi obbligatori mancanti: ${missingFields.join(', ')}`,
+      data: null
+    };
+  }
+  
+  // Validazione e conversione formato date
+  try {
+    const startDateTime = `${bookingData.date}T${bookingData.startTime}:00`;
+    const endDateTime = `${bookingData.date}T${bookingData.endTime}:00`;
+    
+    const startDate = new Date(startDateTime);
+    const endDate = new Date(endDateTime);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      throw new Error('Date non valide');
+    }
+    
+    if (startDate >= endDate) {
+      console.warn(`⚠️ [${requestId}] Data fine precedente a data inizio`);
       return {
         success: false,
-        error: errorData.message || "Errore nel caricamento delle prenotazioni",
+        error: "L'orario di fine deve essere successivo all'orario di inizio.",
         data: null
       };
     }
     
-  } catch (err) {
-    console.error("Errore di rete:", err);
-    return {
-      success: false,
-      error: "Errore di connessione al server",
-      data: null
-    };
-  }
-}
-
-// Funzione per creare una nuova prenotazione
-export async function createBooking(bookingData) {
-  try {
-    if (!localStorage.getItem("token")) {
+    if (startDate < new Date()) {
+      console.warn(`⚠️ [${requestId}] Tentativo prenotazione nel passato`);
       return {
         success: false,
-        error: "Token mancante. Effettua il login.",
+        error: "Non è possibile prenotare nel passato.",
         data: null
       };
     }
-
-    // Converti i dati nel formato richiesto dal backend
-    const startDateTime = `${bookingData.date}T${bookingData.startTime}:00`;
-    const endDateTime = `${bookingData.date}T${bookingData.endTime}:00`;
-
+    
+    // Prepara i dati nel formato richiesto dal backend
     const backendRequest = {
-      aulaId: parseInt(bookingData.aulaId),  // Usa aulaId direttamente (fix per WeeklyCalendar)
-      corsoId: bookingData.corsoId || null, // Usa corsoId se fornito, altrimenti null (prenotazione libera)
-      inizio: startDateTime,                // Converte date+startTime in formato LocalDateTime
-      fine: endDateTime,                    // Converte date+endTime in formato LocalDateTime
-      descrizione: bookingData.purpose || "" // Converte purpose in descrizione
+      aulaId: parseInt(bookingData.aulaId),
+      corsoId: bookingData.corsoId || null,
+      inizio: startDateTime,
+      fine: endDateTime,
+      descrizione: bookingData.purpose || ""
     };
-
-    console.log("🎯 Creando prenotazione:", {
-      original: bookingData,
-      converted: backendRequest
-    });
+    
+    console.log(`📝 [${requestId}] Dati convertiti per backend:`, backendRequest);
 
     const response = await fetch("/api/prenotazioni/prenota", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
-      },
+      headers: createBookingHeaders(requestId),
       body: JSON.stringify(backendRequest)
     });
-
-    console.log("📡 Risposta prenotazione:", {
-      status: response.status,
-      statusText: response.statusText
-    });
-
-    if (response.ok) {
-      // Gestione più robusta della risposta
-      const text = await response.text();
-      console.log("✅ Prenotazione riuscita:", text);
-      
-      let data = {};
-      
-      if (text) {
-        try {
-          data = JSON.parse(text);
-          console.log("📋 Risposta parsata:", data);
-          
-          // Il backend restituisce { message: "...", prenotazione: {...} }
-          if (data.prenotazione) {
-            data.booking = data.prenotazione; // Adatta per il frontend
-          }
-        } catch {
-          console.warn("⚠️ Risposta non è JSON valido:", text);
-          // Se la prenotazione è andata a buon fine ma non c'è JSON, creiamo una risposta
-          data = { 
-            message: "Prenotazione creata con successo",
-            booking: backendRequest
-          };
-        }
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nella creazione della prenotazione"
+    );
+    
+    // Normalizza i dati della prenotazione creata
+    if (result.success && result.data) {
+      // Il backend può restituire structure { message: "...", prenotazione: {...} }
+      if (result.data.prenotazione) {
+        result.data = normalizeBookingData(result.data.prenotazione);
       } else {
-        // Risposta vuota ma successo HTTP
-        data = { 
-          message: "Prenotazione creata con successo",
-          booking: backendRequest
-        };
+        result.data = normalizeBookingData(result.data);
       }
-      
-      return {
-        success: true,
-        error: null,
-        data: data
-      };
-    } else {
-      // Gestione errori più robusta
-      let errorMessage = "Errore nella creazione della prenotazione";
-      
-      try {
-        const text = await response.text();
-        console.log("❌ Errore prenotazione:", {
-          status: response.status,
-          statusText: response.statusText,
-          content: text
-        });
-        
-        if (text) {
-          const errorData = JSON.parse(text);
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        }
-      } catch {
-        console.warn("⚠️ Errore nel parsing della risposta di errore");
-        errorMessage = `Errore HTTP ${response.status}: ${response.statusText}`;
-      }
-      
+      console.log(`✅ [${requestId}] Prenotazione creata con ID: ${result.data?.id}`);
+    }
+    
+    return result;
+    
+  } catch (err) {
+    // Gestisce errori di validazione date, conversione, e errori di rete
+    if (err.message === "Date non valide" || err.message?.includes("validazione")) {
+      console.warn(`⚠️ [${requestId}] Errore validazione:`, err);
       return {
         success: false,
-        error: errorMessage,
+        error: "Formato date non valido.",
         data: null
       };
     }
-  } catch (err) {
-    console.error("Errore di rete:", err);
-    return {
-      success: false,
-      error: "Errore di connessione al server",
-      data: null
-    };
+    
+    return handleBookingNetworkError(err, requestId);
   }
 }
 
 // Funzione per verificare la disponibilità di una stanza
+/**
+ * Verifica la disponibilità di una stanza per un determinato periodo
+ * @param {number} roomId - ID della stanza
+ * @param {string} date - Data nel formato YYYY-MM-DD
+ * @param {string} startTime - Orario di inizio nel formato HH:MM
+ * @param {string} endTime - Orario di fine nel formato HH:MM
+ * @returns {Promise<{success: boolean, error: string|null, data: object|null}>}
+ */
 export async function checkAvailability(roomId, date, startTime, endTime) {
+  const requestId = generateRequestId('CHECK_AVAILABILITY');
+  console.log(`🔍 [${requestId}] Verifica disponibilità stanza:`, {
+    roomId,
+    date,
+    startTime,
+    endTime
+  });
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per checkAvailability`);
+    return {
+      success: false,
+      error: "Token mancante. Effettua il login.",
+      data: null
+    };
+  }
+  
+  // Validazione parametri
+  if (!roomId || !date || !startTime || !endTime) {
+    console.warn(`⚠️ [${requestId}] Parametri mancanti:`, { roomId, date, startTime, endTime });
+    return {
+      success: false,
+      error: "Parametri richiesti mancanti (roomId, date, startTime, endTime).",
+      data: null
+    };
+  }
+  
   try {
-    if (!localStorage.getItem("token")) {
-      return {
-        success: false,
-        error: "Token mancante. Effettua il login.",
-        data: null
-      };
-    }
-
     // Converti date e time nel formato LocalDateTime richiesto dal backend
     const startDateTime = `${date}T${startTime}:00`;
     const endDateTime = `${date}T${endTime}:00`;
-
-    const params = new URLSearchParams({
-      aulaId: roomId.toString(),  // Cambiato da roomId a aulaId
-      inizio: startDateTime,      // Cambiato da date+startTime a inizio
-      fine: endDateTime          // Cambiato da endTime a fine
-    });
-
-    const apiUrl = `/api/prenotazioni/disponibilita?${params}`;
-    console.log("🔍 Verificando disponibilità:", {
-      url: apiUrl,
-      aulaId: roomId,
-      inizio: startDateTime,
-      fine: endDateTime,
-      token: localStorage.getItem("token") ? "presente" : "assente"
-    });
-
-    const response = await fetch(apiUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
-      }
-    });
-
-    console.log("📡 Risposta ricevuta:", {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-      url: response.url
-    });
-
-    if (response.ok) {
-      // Controlla se la risposta ha contenuto
-      const text = await response.text();
-      console.log("✅ Risposta di successo:", {
-        hasContent: !!text,
-        contentLength: text.length,
-        content: text.substring(0, 200) + (text.length > 200 ? "..." : "")
-      });
-      
-      let data = {};
-      
-      if (text) {
-        try {
-          data = JSON.parse(text);
-          console.log("📋 JSON parsato con successo:", data);
-          
-          // Adatta la risposta del backend al formato aspettato dal frontend
-          if (data.disponibile !== undefined) {
-            data = {
-              available: data.disponibile,
-              roomId: data.aulaId,
-              period: data.periodo,
-              message: data.disponibile ? "Stanza disponibile" : "Stanza non disponibile"
-            };
-          }
-        } catch {
-          console.warn("⚠️ Risposta non è JSON valido:", text);
-          // Se non è JSON, assumiamo che sia disponibile
-          data = { available: true, message: "Stanza disponibile" };
-        }
-      } else {
-        // Risposta vuota, assumiamo disponibile
-        console.log("📭 Risposta vuota, assumo disponibilità");
-        data = { available: true, message: "Stanza disponibile" };
-      }
-      
-      return {
-        success: true,
-        error: null,
-        data: data
-      };
-    } else {
-      // Gestione errori più robusta
-      let errorMessage = "Errore nella verifica della disponibilità";
-      
-      const text = await response.text();
-      console.log("❌ Errore HTTP:", {
-        status: response.status,
-        statusText: response.statusText,
-        hasContent: !!text,
-        content: text
-      });
-      
-      try {
-        if (text) {
-          const errorData = JSON.parse(text);
-          errorMessage = errorData.message || errorMessage;
-        }
-      } catch {
-        console.warn("⚠️ Errore nel parsing della risposta di errore");
-        errorMessage = `Errore HTTP ${response.status}: ${response.statusText}`;
-      }
-      
+    
+    // Validazione formato date
+    const startDate = new Date(startDateTime);
+    const endDate = new Date(endDateTime);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      console.warn(`⚠️ [${requestId}] Date non valide:`, { startDateTime, endDateTime });
       return {
         success: false,
-        error: errorMessage,
+        error: "Formato date non valido.",
         data: null
       };
     }
+    
+    if (startDate >= endDate) {
+      console.warn(`⚠️ [${requestId}] Orario fine precedente a orario inizio`);
+      return {
+        success: false,
+        error: "L'orario di fine deve essere successivo all'orario di inizio.",
+        data: null
+      };
+    }
+
+    const params = new URLSearchParams({
+      aulaId: roomId.toString(),
+      inizio: startDateTime,
+      fine: endDateTime
+    });
+
+    const apiUrl = `/api/prenotazioni/disponibilita?${params}`;
+    console.log(`📡 [${requestId}] Invio richiesta verifica disponibilità: ${apiUrl}`);
+
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: createBookingHeaders(requestId)
+    });
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nella verifica della disponibilità"
+    );
+    
+    // Post-elaborazione per normalizzare la risposta di disponibilità
+    if (result.success && result.data) {
+      // Il backend può restituire { disponibile: true/false, aulaId: ..., periodo: ... }
+      let normalizedData = {
+        available: result.data.disponibile ?? result.data.available ?? true,
+        roomId: result.data.aulaId || result.data.roomId || roomId,
+        period: {
+          start: startDateTime,
+          end: endDateTime,
+          date: date,
+          startTime: startTime,
+          endTime: endTime
+        },
+        message: undefined
+      };
+      
+      // Aggiungi messaggio descrittivo
+      if (normalizedData.available) {
+        normalizedData.message = "Stanza disponibile per il periodo richiesto";
+      } else {
+        normalizedData.message = result.data.message || result.data.motivo || "Stanza non disponibile per il periodo richiesto";
+      }
+      
+      console.log(`✅ [${requestId}] Disponibilità verificata: ${normalizedData.available ? 'DISPONIBILE' : 'NON DISPONIBILE'}`);
+      
+      result.data = normalizedData;
+    }
+    
+    return result;
+    
   } catch (err) {
-    console.error("Errore di rete:", err);
-    return {
-      success: false,
-      error: "Errore di connessione al server",
-      data: null
-    };
+    return handleBookingNetworkError(err, requestId);
   }
 }
 
 // Funzione per aggiornare una prenotazione esistente
+/**
+ * Aggiorna una prenotazione esistente
+ * @param {number} bookingId - ID della prenotazione da aggiornare
+ * @param {object} bookingData - Nuovi dati della prenotazione
+ * @returns {Promise<{success: boolean, error: string|null, data: object|null}>}
+ */
 export async function updateBooking(bookingId, bookingData) {
+  const requestId = generateRequestId('UPDATE_BOOKING');
+  console.log(`✏️ [${requestId}] Avvio aggiornamento prenotazione ${bookingId}:`, {
+    aulaId: bookingData?.aulaId || bookingData?.roomId,
+    date: bookingData?.date,
+    startTime: bookingData?.startTime,
+    endTime: bookingData?.endTime
+  });
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per updateBooking`);
+    return {
+      success: false,
+      error: "Token mancante. Effettua il login.",
+      data: null
+    };
+  }
+  
+  // Validazione parametri
+  if (!bookingId) {
+    console.warn(`⚠️ [${requestId}] ID prenotazione mancante`);
+    return {
+      success: false,
+      error: "ID prenotazione richiesto.",
+      data: null
+    };
+  }
+  
+  if (!bookingData || typeof bookingData !== 'object') {
+    console.warn(`⚠️ [${requestId}] Dati prenotazione non validi`);
+    return {
+      success: false,
+      error: "Dati prenotazione non forniti o non validi.",
+      data: null
+    };
+  }
+
   try {
-    if (!localStorage.getItem("token")) {
+    // Prepara i dati nel formato richiesto dal backend
+    let backendRequest;
+    
+    if (bookingData.date && bookingData.startTime && bookingData.endTime) {
+      // Formato frontend standard
+      const startDateTime = `${bookingData.date}T${bookingData.startTime}:00`;
+      const endDateTime = `${bookingData.date}T${bookingData.endTime}:00`;
+      
+      backendRequest = {
+        aulaId: parseInt(bookingData.aulaId || bookingData.roomId),
+        corsoId: bookingData.corsoId || null,
+        inizio: startDateTime,
+        fine: endDateTime,
+        descrizione: bookingData.purpose || bookingData.descrizione || ""
+      };
+    } else {
+      // Formato backend diretto
+      backendRequest = {
+        aulaId: parseInt(bookingData.aulaId || bookingData.roomId),
+        corsoId: bookingData.corsoId || null,
+        inizio: bookingData.inizio,
+        fine: bookingData.fine,
+        descrizione: bookingData.descrizione || ""
+      };
+    }
+    
+    // Validazione campi obbligatori
+    if (!backendRequest.aulaId || !backendRequest.inizio || !backendRequest.fine) {
+      console.warn(`⚠️ [${requestId}] Campi obbligatori mancanti:`, {
+        aulaId: backendRequest.aulaId,
+        inizio: backendRequest.inizio,
+        fine: backendRequest.fine
+      });
       return {
         success: false,
-        error: "Token mancante. Effettua il login.",
+        error: "Campi obbligatori mancanti (aulaId, inizio, fine).",
         data: null
       };
     }
-
-    // Converti i dati nel formato richiesto dal backend
-    const startDateTime = `${bookingData.date}T${bookingData.startTime}:00`;
-    const endDateTime = `${bookingData.date}T${bookingData.endTime}:00`;
-
-    const backendRequest = {
-      aulaId: parseInt(bookingData.roomId),  // Converte roomId in aulaId
-      corsoId: bookingData.corsoId || 1,    // Usa corsoId se fornito, altrimenti default a 1
-      inizio: startDateTime,                // Converte date+startTime in formato LocalDateTime
-      fine: endDateTime,                    // Converte date+endTime in formato LocalDateTime
-      descrizione: bookingData.purpose || "" // Converte purpose in descrizione
-    };
-
-    console.log("🔄 Aggiornando prenotazione:", {
-      id: bookingId,
-      original: bookingData,
-      converted: backendRequest
-    });
+    
+    console.log(`📝 [${requestId}] Dati convertiti per backend:`, backendRequest);
 
     const response = await fetch(`/api/prenotazioni/${bookingId}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
-      },
+      headers: createBookingHeaders(requestId),
       body: JSON.stringify(backendRequest)
     });
-
-    console.log("📡 Risposta aggiornamento:", {
-      status: response.status,
-      statusText: response.statusText
-    });
-
-    if (response.ok) {
-      // Gestione più robusta della risposta
-      const text = await response.text();
-      console.log("✅ Aggiornamento riuscito:", text);
-      
-      let data = {};
-      
-      if (text) {
-        try {
-          data = JSON.parse(text);
-          console.log("📋 Risposta parsata:", data);
-          
-          // Il backend restituisce { message: "...", prenotazione: {...} }
-          if (data.prenotazione) {
-            data.booking = data.prenotazione; // Adatta per il frontend
-          }
-        } catch {
-          console.warn("⚠️ Risposta non è JSON valido:", text);
-          // Se l'aggiornamento è andato a buon fine ma non c'è JSON, creiamo una risposta
-          data = { 
-            message: "Prenotazione aggiornata con successo",
-            booking: { ...backendRequest, id: bookingId }
-          };
-        }
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nell'aggiornamento della prenotazione"
+    );
+    
+    // Normalizza i dati della prenotazione aggiornata
+    if (result.success && result.data) {
+      // Il backend può restituire { message: "...", prenotazione: {...} }
+      if (result.data.prenotazione) {
+        result.data = normalizeBookingData(result.data.prenotazione);
       } else {
-        // Risposta vuota ma successo HTTP
-        data = { 
-          message: "Prenotazione aggiornata con successo",
-          booking: { ...backendRequest, id: bookingId }
-        };
+        result.data = normalizeBookingData(result.data);
       }
-      
-      return {
-        success: true,
-        error: null,
-        data: data
-      };
-    } else {
-      // Gestione errori più robusta
-      let errorMessage = "Errore nell'aggiornamento della prenotazione";
-      
-      try {
-        const text = await response.text();
-        console.log("❌ Errore aggiornamento:", {
-          status: response.status,
-          statusText: response.statusText,
-          content: text
-        });
-        
-        if (text) {
-          const errorData = JSON.parse(text);
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        }
-      } catch {
-        console.warn("⚠️ Errore nel parsing della risposta di errore");
-        errorMessage = `Errore HTTP ${response.status}: ${response.statusText}`;
-      }
-      
-      return {
-        success: false,
-        error: errorMessage,
-        data: null
-      };
+      console.log(`✅ [${requestId}] Prenotazione aggiornata con ID: ${result.data?.id}`);
     }
+    
+    return result;
+    
   } catch (err) {
-    console.error("Errore di rete:", err);
-    return {
-      success: false,
-      error: "Errore di connessione al server",
-      data: null
-    };
+    return handleBookingNetworkError(err, requestId);
   }
 }
 
 // Funzione per eliminare una prenotazione
+/**
+ * Elimina una prenotazione esistente
+ * @param {number} bookingId - ID della prenotazione da eliminare
+ * @returns {Promise<{success: boolean, error: string|null, data: object|null}>}
+ */
 export async function deleteBooking(bookingId) {
-  try {
-    console.log("🗑️ deleteBooking - Tentativo eliminazione prenotazione ID:", bookingId);
-    
-    if (!localStorage.getItem("token")) {
-      console.log("❌ deleteBooking - Token mancante");
-      return {
-        success: false,
-        error: "Token mancante. Effettua il login.",
-        data: null
-      };
-    }
+  const requestId = generateRequestId('DELETE_BOOKING');
+  console.log(`🗑️ [${requestId}] Avvio eliminazione prenotazione ${bookingId}`);
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per deleteBooking`);
+    return {
+      success: false,
+      error: "Token mancante. Effettua il login.",
+      data: null
+    };
+  }
+  
+  // Validazione parametri
+  if (!bookingId) {
+    console.warn(`⚠️ [${requestId}] ID prenotazione mancante`);
+    return {
+      success: false,
+      error: "ID prenotazione richiesto.",
+      data: null
+    };
+  }
 
-    console.log("📡 deleteBooking - Invio richiesta DELETE a:", `/api/prenotazioni/${bookingId}`);
+  try {
+    console.log(`📡 [${requestId}] Invio richiesta DELETE a /api/prenotazioni/${bookingId}`);
     
     const response = await fetch(`/api/prenotazioni/${bookingId}`, {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      headers: createBookingHeaders(requestId)
+    });
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nell'eliminazione della prenotazione"
+    );
+    
+    // Per le operazioni di cancellazione, aggiungiamo informazioni aggiuntive
+    if (result.success) {
+      console.log(`✅ [${requestId}] Prenotazione ${bookingId} eliminata con successo`);
+      
+      if (!result.data) {
+        result.data = {};
       }
-    });
-
-    console.log("📡 deleteBooking - Risposta ricevuta:", {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
-    });
-
-    if (response.ok) {
-      console.log("✅ deleteBooking - Prenotazione eliminata con successo");
-      return {
-        success: true,
-        error: null,
-        data: { message: "Prenotazione eliminata con successo" }
-      };
-    } else {
-      const errorData = await response.json();
-      console.log("❌ deleteBooking - Errore dal server:", errorData);
-      return {
-        success: false,
-        error: errorData.message || "Errore nell'eliminazione della prenotazione",
-        data: null
+      
+      result.data = {
+        ...result.data,
+        deletedId: bookingId,
+        message: result.data.message || "Prenotazione eliminata con successo",
+        timestamp: new Date().toISOString()
       };
     }
+    
+    return result;
+    
   } catch (err) {
-    console.error("❌ deleteBooking - Errore di rete:", err);
-    return {
-      success: false,
-      error: "Errore di connessione al server",
-      data: null
-    };
+    return handleBookingNetworkError(err, requestId);
   }
 }
 
 // Funzione per eliminare una prenotazione come admin (può eliminare qualsiasi prenotazione)
+/**
+ * Elimina una prenotazione come amministratore
+ * @param {number} bookingId - ID della prenotazione da eliminare
+ * @param {string} reason - Motivo dell'eliminazione (opzionale)
+ * @returns {Promise<{success: boolean, error: string|null, data: object|null}>}
+ */
 export async function deleteBookingAsAdmin(bookingId, reason = null) {
+  const requestId = generateRequestId('DELETE_BOOKING_ADMIN');
+  console.log(`🗑️👨‍💼 [${requestId}] Avvio eliminazione admin prenotazione ${bookingId}:`, { reason });
+  
+  // Validazione token
+  const token = getValidToken();
+  if (!token) {
+    console.warn(`⚠️ [${requestId}] Token mancante per deleteBookingAsAdmin`);
+    return {
+      success: false,
+      error: "Token mancante. Effettua il login.",
+      data: null
+    };
+  }
+  
+  // Validazione parametri
+  if (!bookingId) {
+    console.warn(`⚠️ [${requestId}] ID prenotazione mancante`);
+    return {
+      success: false,
+      error: "ID prenotazione richiesto.",
+      data: null
+    };
+  }
+
   try {
-    console.log("🗑️ deleteBookingAsAdmin - Tentativo eliminazione admin prenotazione ID:", bookingId);
-    
-    const token = localStorage.getItem("token");
-    if (!token) {
-      console.log("❌ deleteBookingAsAdmin - Token mancante");
-      return {
-        success: false,
-        error: "Token mancante. Effettua il login.",
-        data: null
-      };
-    }
-
-    console.log("🔐 deleteBookingAsAdmin - Token presente:", token ? "SI" : "NO");
-    console.log("🔐 deleteBookingAsAdmin - Token (prime 50 char):", token ? token.substring(0, 50) + "..." : "N/A");
-    
-    // Decodifica il token per verificare il contenuto (solo per debug)
-    if (token) {
-      try {
-        const tokenParts = token.split('.');
-        if (tokenParts.length === 3) {
-          const payload = JSON.parse(atob(tokenParts[1]));
-          console.log("🔐 deleteBookingAsAdmin - Token payload:", {
-            sub: payload.sub,
-            ruolo: payload.ruolo,
-            exp: payload.exp,
-            iat: payload.iat,
-            userId: payload.userId
-          });
-          
-          // Verifica se il token è scaduto
-          const now = Math.floor(Date.now() / 1000);
-          const isExpired = payload.exp < now;
-          console.log("🔐 deleteBookingAsAdmin - Token scaduto:", isExpired, "- Scadenza:", new Date(payload.exp * 1000));
-        }
-      } catch (decodeError) {
-        console.log("⚠️ deleteBookingAsAdmin - Errore decodifica token:", decodeError);
-      }
-    }
-
-    console.log("📡 deleteBookingAsAdmin - Invio richiesta DELETE a:", `/api/admin/prenotazioni/${bookingId}`);
+    console.log(`📡 [${requestId}] Invio richiesta DELETE admin a /api/admin/prenotazioni/${bookingId}`);
     
     const requestBody = reason ? { reason } : {};
     
     const response = await fetch(`/api/admin/prenotazioni/${bookingId}`, {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
+      headers: createBookingHeaders(requestId),
       body: reason ? JSON.stringify(requestBody) : undefined
     });
-
-    console.log("📡 deleteBookingAsAdmin - Risposta ricevuta:", {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
-    });
-
-    if (response.ok) {
-      // Gestione della risposta di successo
-      let responseData = null;
+    
+    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
+    const result = await handleBookingResponse(
+      response,
+      requestId,
+      "Errore nell'eliminazione amministrativa della prenotazione"
+    );
+    
+    // Per le operazioni di cancellazione admin, aggiungiamo informazioni aggiuntive
+    if (result.success) {
+      console.log(`✅ [${requestId}] Prenotazione ${bookingId} eliminata con successo (admin)`);
       
-      try {
-        // Tenta di leggere il JSON solo se c'è contenuto
-        const contentLength = response.headers.get("content-length");
-        const contentType = response.headers.get("content-type");
-        
-        if (contentLength !== "0" && contentType && contentType.includes("application/json")) {
-          responseData = await response.json();
-        }
-      } catch (jsonError) {
-        console.log("⚠️ deleteBookingAsAdmin - Risposta senza JSON valido, probabile successo");
+      if (!result.data) {
+        result.data = {};
       }
       
-      console.log("✅ deleteBookingAsAdmin - Prenotazione eliminata con successo");
-      return {
-        success: true,
-        error: null,
-        data: responseData || { message: "Prenotazione eliminata con successo dall'amministratore" }
-      };
-    } else {
-      // Fallback: se l'endpoint admin non esiste, usa quello normale
-      if (response.status === 404) {
-        console.log("⚠️ deleteBookingAsAdmin - Endpoint admin non trovato, fallback a deleteBooking normale");
-        return await deleteBooking(bookingId);
-      }
-      
-      let errorData = null;
-      try {
-        errorData = await response.json();
-      } catch (jsonError) {
-        console.log("⚠️ deleteBookingAsAdmin - Errore senza JSON valido");
-        errorData = { message: "Errore nell'eliminazione della prenotazione" };
-      }
-      
-      console.log("❌ deleteBookingAsAdmin - Errore dal server:", errorData);
-      return {
-        success: false,
-        error: errorData.message || "Errore nell'eliminazione della prenotazione",
-        data: null
+      result.data = {
+        ...result.data,
+        deletedId: bookingId,
+        deletedBy: 'admin',
+        reason: reason,
+        message: result.data.message || "Prenotazione eliminata con successo dall'amministratore",
+        timestamp: new Date().toISOString()
       };
     }
+    
+    return result;
+    
   } catch (err) {
-    console.error("❌ deleteBookingAsAdmin - Errore di rete:", err);
-    return {
-      success: false,
-      error: "Errore di connessione al server",
-      data: null
-    };
+    return handleBookingNetworkError(err, requestId);
   }
 }
 
@@ -1322,22 +1556,33 @@ export async function toggleRoomBlock(roomId, blockData) {
       rooms = JSON.parse(roomsText);
       console.log('🔒 Dati parsati:', rooms);
       console.log('🔒 Tipo di rooms:', typeof rooms);
-      console.log('🔒 È array?', Array.isArray(rooms));
       
-      // Se rooms è un oggetto con una proprietà che contiene l'array
-      if (typeof rooms === 'object' && !Array.isArray(rooms)) {
-        console.log('🔒 Proprietà di rooms:', Object.keys(rooms));
-        
-        // Controlla se c'è una proprietà che contiene l'array
-        for (const [key, value] of Object.entries(rooms)) {
-          console.log(`🔒 ${key}:`, Array.isArray(value) ? `Array di ${value.length} elementi` : typeof value);
-          if (Array.isArray(value)) {
-            console.log('🔒 Trovato array in proprietà:', key);
-            rooms = value; // Usa questo array
-            break;
-          }
+      // Gestisce diverse strutture di risposta (simile a getAllRoomsAdmin)
+      let roomsArray = [];
+      
+      if (Array.isArray(rooms)) {
+        roomsArray = rooms;
+        console.log("🔒 toggleRoomBlock - Rooms è un array diretto:", roomsArray.length, "elementi");
+      } else if (rooms.data && rooms.data.rooms && Array.isArray(rooms.data.rooms)) {
+        // Formato backend: {data: {rooms: [...], totalRooms: n}}
+        roomsArray = rooms.data.rooms;
+        console.log("🔒 toggleRoomBlock - Trovato data.data.rooms array:", roomsArray.length, "elementi");
+      } else if (rooms.rooms && Array.isArray(rooms.rooms)) {
+        roomsArray = rooms.rooms;
+        console.log("🔒 toggleRoomBlock - Trovato data.rooms array:", roomsArray.length, "elementi");
+      } else if (rooms.aule && Array.isArray(rooms.aule)) {
+        roomsArray = rooms.aule;
+        console.log("🔒 toggleRoomBlock - Trovato data.aule array:", roomsArray.length, "elementi");
+      } else {
+        console.warn("⚠️ toggleRoomBlock - Formato risposta inaspettato:", rooms);
+        console.log("🔍 toggleRoomBlock - Chiavi in rooms:", Object.keys(rooms));
+        if (rooms.data) {
+          console.log("🔍 toggleRoomBlock - Chiavi in rooms.data:", Object.keys(rooms.data));
         }
+        roomsArray = [];
       }
+      
+      rooms = roomsArray; // Assegna l'array estratto
       
     } catch (e) {
       console.error('🔒 Errore parsing stanze:', e);
@@ -1420,7 +1665,7 @@ export async function toggleRoomBlock(roomId, blockData) {
       let responseText = "";
       try {
         responseText = await response.text();
-      } catch (e) {
+      } catch {
         console.log('🔒 Risposta vuota ma successo HTTP');
       }
       
@@ -1429,7 +1674,7 @@ export async function toggleRoomBlock(roomId, blockData) {
         try {
           data = JSON.parse(responseText);
           console.log('✅ Risposta JSON parsata:', data);
-        } catch (e) {
+        } catch  {
           console.log('⚠️ Risposta non è JSON valido, ma operazione riuscita');
           data = { 
             message: "Operazione completata con successo",
@@ -1471,13 +1716,13 @@ export async function toggleRoomBlock(roomId, blockData) {
           try {
             const errorData = JSON.parse(text);
             errorMessage = errorData.error || errorData.message || errorMessage;
-          } catch (e) {
+          } catch {
             // Se non è JSON, usa il testo raw
             errorMessage = text.length > 100 ? text.substring(0, 100) + "..." : text;
           }
         }
-      } catch (e) {
-        console.error('🔒 Errore nella lettura della risposta di errore:', e);
+      } catch (error){
+        console.error('🔒 Errore nella lettura della risposta di errore:', error.message);
         errorMessage = `Errore HTTP ${response.status}: ${response.statusText}`;
       }
       
@@ -1562,12 +1807,16 @@ export async function getAllBookings() {
       const rooms = roomsResponse.success ? roomsResponse.data : [];
       const roomsMap = {};
       
-      // Crea una mappa ID -> nome stanza
-      rooms.forEach(room => {
-        const roomId = room.id || room.aulaId;
-        const roomName = room.name || room.nome || room.nomeAula || `Stanza ${roomId}`;
-        roomsMap[roomId] = roomName;
-      });
+      // Crea una mappa ID -> nome stanza - proteggi contro rooms non array
+      if (Array.isArray(rooms)) {
+        rooms.forEach(room => {
+          const roomId = room.id || room.aulaId;
+          const roomName = room.name || room.nome || room.nomeAula || `Stanza ${roomId}`;
+          roomsMap[roomId] = roomName;
+        });
+      } else {
+        console.warn('⚠️ getAllBookings: rooms non è un array:', rooms);
+      }
       
       // Normalizza i dati come in getMyBookings
       const normalizedBookings = bookingsArray.map(booking => {

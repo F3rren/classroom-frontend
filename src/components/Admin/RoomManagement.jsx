@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getAllRoomsAdmin } from '../../services/bookingService';
+import { deleteRoom } from '../../services/adminService';
 import RoomEditModal from './RoomEditModal';
 import RoomBlockModal from './RoomBlockModal';
 
@@ -9,6 +10,7 @@ const RoomManagement = () => {
   const [error, setError] = useState(null);
   const [editingRoom, setEditingRoom] = useState(null);
   const [blockingRoom, setBlockingRoom] = useState(null);
+  const [deletingRoom, setDeletingRoom] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [retryAttempts, setRetryAttempts] = useState(0);
@@ -134,6 +136,41 @@ const RoomManagement = () => {
     setTimeout(() => setSuccessMessage(''), 5000);
     setBlockingRoom(null);
     loadRooms(); // Ricarica la lista
+  };
+
+  const handleDeleteRoom = (room) => {
+    setDeletingRoom(room);
+  };
+
+  const confirmDeleteRoom = async () => {
+    if (!deletingRoom) return;
+
+    try {
+      const result = await deleteRoom(deletingRoom.id);
+      
+      if (result.success) {
+        setSuccessMessage(`Stanza "${deletingRoom.nome || deletingRoom.name || `Stanza ${deletingRoom.id}`}" eliminata con successo`);
+        setTimeout(() => setSuccessMessage(''), 5000);
+        setDeletingRoom(null);
+        loadRooms(); // Ricarica la lista
+      } else {
+        const errorType = categorizeError(result.error);
+        const errorMessage = getEnhancedErrorMessage(result.error, errorType);
+        setError(errorMessage);
+        setTimeout(() => setError(null), 5000);
+        setDeletingRoom(null);
+      }
+    } catch (err) {
+      const errorType = categorizeError(err.message);
+      const errorMessage = getEnhancedErrorMessage(err.message, errorType);
+      setError(errorMessage);
+      setTimeout(() => setError(null), 5000);
+      setDeletingRoom(null);
+    }
+  };
+
+  const cancelDeleteRoom = () => {
+    setDeletingRoom(null);
   };
 
   const getStatusBadge = (room) => {
@@ -268,7 +305,7 @@ const RoomManagement = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <h3 className="text-lg font-medium text-gray-900 flex items-center gap-3">
-                            {room.nome || room.name}
+                            {room.nome || room.name || `Stanza ${room.id}`}
                             {getStatusBadge(room)}
                             {getTypeBadge(room)}
                           </h3>
@@ -277,7 +314,7 @@ const RoomManagement = () => {
                               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zm-6 3a2 2 0 11-4 0 2 2 0 014 0z" />
                               </svg>
-                              Capienza: {room.capienza || room.capacity || 'N/A'}
+                              Capienza: {room.capienza || room.capacity || 'Non specificata'}
                             </span>
                             {!(room.isVirtual || room.virtuale) && ( // Supporta entrambi i formati
                               <span className="flex items-center">
@@ -335,6 +372,17 @@ const RoomManagement = () => {
                           >
                             {room.isBlocked ? 'Sblocca' : 'Blocca'}
                           </button>
+                          
+                          {/* Pulsante elimina */}
+                          <button
+                            onClick={() => handleDeleteRoom(room)}
+                            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 border border-red-300 rounded transition-colors"
+                            title="Elimina stanza"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -381,6 +429,57 @@ const RoomManagement = () => {
           onClose={handleCloseBlockModal}
           onSuccess={handleBlockSuccess}
         />
+      )}
+
+      {/* Modal di conferma eliminazione stanza */}
+      {deletingRoom && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Conferma Eliminazione
+              </h3>
+            </div>
+            
+            <div className="px-6 py-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-gray-900">
+                    Sei sicuro di voler eliminare questa stanza?
+                  </h3>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500">
+                      La stanza <strong>"{deletingRoom.nome || deletingRoom.name || `Stanza ${deletingRoom.id}`}"</strong> verrà eliminata permanentemente dal sistema.
+                    </p>
+                    <p className="text-sm text-red-600 mt-2">
+                      ⚠️ <strong>Attenzione:</strong> Questa azione non può essere annullata. Tutte le prenotazioni associate verranno eliminate.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 bg-gray-50 flex space-x-3">
+              <button
+                onClick={cancelDeleteRoom}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={confirmDeleteRoom}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium transition-colors"
+              >
+                Elimina Definitivamente
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

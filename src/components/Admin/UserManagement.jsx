@@ -69,7 +69,10 @@ export default function UserManagement({ currentUser }) {
           const result = await getUsersList();
           
           if (result.success) {
-            setUsers(result.data);
+            // Assicuriamoci che result.data sia un array
+            const usersData = Array.isArray(result.data) ? result.data : [];
+            console.log("📊 Caricati", usersData.length, "utenti");
+            setUsers(usersData);
             setError(null);
             break;
           } else {
@@ -132,7 +135,16 @@ export default function UserManagement({ currentUser }) {
       try {
         const result = await deleteUser(showDeleteConfirm.id);
         if (result.success) {
-          setUsers(users.filter(u => u.id !== showDeleteConfirm.id));
+          // Filtra solo se users è un array
+          if (Array.isArray(users)) {
+            setUsers(users.filter(u => u.id !== showDeleteConfirm.id));
+          } else {
+            // Se users non è un array, ricarica la lista
+            const reloadResult = await getUsersList();
+            if (reloadResult.success) {
+              setUsers(Array.isArray(reloadResult.data) ? reloadResult.data : []);
+            }
+          }
           setError(null);
         } else {
           const errorType = categorizeError(result.error);
@@ -186,9 +198,9 @@ export default function UserManagement({ currentUser }) {
   };
 
   const userStats = {
-    total: users.length,
-    admins: users.filter(u => u.ruolo === 'admin').length,
-    users: users.filter(u => u.ruolo === 'user').length
+    total: Array.isArray(users) ? users.length : 0,
+    admins: Array.isArray(users) ? users.filter(u => u.ruolo === 'admin').length : 0,
+    users: Array.isArray(users) ? users.filter(u => u.ruolo === 'user').length : 0
   };
 
   // Mostra loading durante il caricamento
@@ -319,11 +331,18 @@ export default function UserManagement({ currentUser }) {
 
       {/* Lista utenti */}
       <div className="grid gap-4">
-        {users.length === 0 ? (
+        {!Array.isArray(users) || users.length === 0 ? (
           <div className="text-center py-12 text-gray-500 bg-white rounded-lg shadow">
             <div className="text-6xl mb-4">👥</div>
-            <h3 className="text-xl font-semibold mb-2">Nessun utente trovato</h3>
-            <p>Non ci sono utenti registrati nel sistema.</p>
+            <h3 className="text-xl font-semibold mb-2">
+              {!Array.isArray(users) ? "Errore nel caricamento utenti" : "Nessun utente trovato"}
+            </h3>
+            <p>
+              {!Array.isArray(users) 
+                ? "Si è verificato un problema nel caricamento degli utenti." 
+                : "Non ci sono utenti registrati nel sistema."
+              }
+            </p>
             <button
               onClick={handleAddUser}
               className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"

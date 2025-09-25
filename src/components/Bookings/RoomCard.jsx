@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { toggleRoomBlock, getRoomBookingsByDate } from '../../services/bookingService';
+import { getRoomBookingsByDate } from '../../services/bookingService';
 
 // Sistema di gestione errori intelligente
 const categorizeError = (error) => {
@@ -128,8 +128,7 @@ const checkTimeSlotAvailability = (bookings) => {
   return availability;
 };
 
-const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
-  const [isBlocking, setIsBlocking] = useState(false);
+const RoomCard = ({ room, onBook }) => {
   const [isBlocked, setIsBlocked] = useState(room.isBlocked || room.blocked !== null);
   const [todayAvailability, setTodayAvailability] = useState(null);
   const [error, setError] = useState('');
@@ -209,32 +208,10 @@ const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
     loadTodayAvailability();
   }, [room.id]);
 
-  const handleToggleBlock = async (e) => {
-    e.stopPropagation();
-    setIsBlocking(true);
-    setOperationType('block');
-    
-    try {
-      await retryOperation(async () => {
-        const result = await toggleRoomBlock(room.id, !isBlocked);
-        if (result.success) {
-          setIsBlocked(!isBlocked);
-          return result;
-        } else {
-          throw new Error(result.error || 'Errore nel blocco/sblocco');
-        }
-      });
-    } catch {
-      // Errore già gestito in retryOperation
-    } finally {
-      setIsBlocking(false);
-    }
-  };
-
   // Funzione per verificare lo stato della stanza basato sull'orario
   const getRoomStatus = () => {
     const bookings = room.bookings || [];
-    if (bookings.length === 0) {
+    if (!Array.isArray(bookings) || bookings.length === 0) {
       return 'LIBERA';
     }
     
@@ -333,36 +310,6 @@ const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
               )}
             </div>
           </div>
-          
-          {isAdmin && (
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={handleToggleBlock}
-                disabled={isBlocking}
-                className={`p-1 rounded ${isBlocked ? 'text-red-600 hover:bg-red-50' : 'text-gray-400 hover:bg-gray-50'} transition-colors`}
-                title={isBlocked ? 'Sblocca stanza' : 'Blocca stanza'}
-              >
-                {isBlocking ? (
-                  isRetrying && operationType === 'block' ? (
-                    <div className="flex items-center space-x-1">
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
-                      <span className="text-xs">{retryAttempts}/3</span>
-                    </div>
-                  ) : (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                  )
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {isBlocked ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    )}
-                  </svg>
-                )}
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Informazioni stanza */}
@@ -555,14 +502,6 @@ const RoomCard = ({ room, onBook, onEdit, isAdmin }) => {
             {isBlocked ? 'Non disponibile' : 'Prenota'}
           </button>
           
-          {isAdmin && onEdit && (
-            <button
-              onClick={() => onEdit(room)}
-              className="px-4 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Modifica
-            </button>
-          )}
         </div>
       </div>
     </div>

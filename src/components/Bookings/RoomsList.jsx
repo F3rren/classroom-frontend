@@ -182,7 +182,7 @@ const RoomsList = () => {
     if (room.isBlocked || room.blocked) return 'BLOCCATA';
     
     const bookings = room.bookings || [];
-    if (bookings.length === 0) return 'LIBERA';
+    if (!Array.isArray(bookings) || bookings.length === 0) return 'LIBERA';
     
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 5);
@@ -212,7 +212,7 @@ const RoomsList = () => {
   };
 
   // Filtra le stanze
-  const filteredRooms = rooms.filter(room => {
+  const filteredRooms = Array.isArray(rooms) ? rooms.filter(room => {
     const matchesSearch = room.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          room.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFloor = floorFilter === 'all' || room.floor?.toString() === floorFilter;
@@ -235,14 +235,14 @@ const RoomsList = () => {
     }
     
     return matchesSearch && matchesFloor && matchesStatus && matchesCapacity && matchesFeature;
-  });
+  }) : [];
 
   // Ottieni i piani disponibili
-  const availableFloors = [...new Set(rooms.map(room => room.floor?.toString()).filter(Boolean))].sort();
+  const availableFloors = [...new Set((Array.isArray(rooms) ? rooms : []).map(room => room.floor?.toString()).filter(Boolean))].sort();
 
   // Ottieni le attrezzature disponibili
   const availableFeatures = [...new Set(
-    rooms.flatMap(room => room.features || [])
+    (Array.isArray(rooms) ? rooms : []).flatMap(room => room.features || [])
       .filter(Boolean)
   )].sort();
 

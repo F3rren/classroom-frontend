@@ -80,33 +80,57 @@ export default function Login() {
         const loginResult = await authLogin(email.trim(), password);
         
         if (loginResult.success) {
-          // 3. Gestione migliorata del getCurrentUser con fallback
+          // Ora utilizziamo direttamente i dati dal login per la navigazione
           try {
-            const userResult = await getCurrentUser();
+            let user = null;
             
-            if (userResult?.success && userResult?.data) {
-              const user = userResult.data;
-              
+            // Prima prova a ottenere l'utente dai dati del login (nuova struttura)
+            if (loginResult.data?.user) {
+              user = loginResult.data.user;
+              console.log("📍 Utente ottenuto dal login:", user);
+            } 
+            // Potrebbe essere anche direttamente in loginResult.data
+            else if (loginResult.data?.ruolo || loginResult.data?.email) {
+              user = loginResult.data;
+              console.log("📍 Utente ottenuto direttamente dai dati del login:", user);
+            }
+            
+            // Solo se non abbiamo i dati utente dal login, facciamo la chiamata separata
+            if (!user) {
+              console.log("📍 Fallback: utilizzo getCurrentUser");
+              const userResult = await getCurrentUser();
+              if (userResult?.success && userResult?.data) {
+                user = userResult.data;
+                console.log("📍 Utente ottenuto da getCurrentUser:", user);
+              }
+            }
+            
+            // Validazione più flessibile dell'utente
+            if (user && (user.ruolo || user.role)) {
+              const userRole = user.ruolo || user.role;
               // Redirect intelligente basato sul ruolo
-              const redirectPath = user.ruolo === 'admin' 
+              const redirectPath = userRole === 'admin' 
                 ? '/dashboard/adminpanel' 
                 : '/dashboard/user';
               
+              console.log(`📍 Navigazione verso ${redirectPath} per utente ${userRole}`);
               navigate(redirectPath, { replace: true });
               return;
             } else {
-              // Fallback: vai alla home ma avvisa l'utente
-              navigate('/', { 
+              console.log("📍 Ruolo utente non trovato, dati disponibili:", user);
+              // Fallback: vai alla dashboard utente generica
+              navigate('/dashboard/user', { 
                 replace: true,
                 state: { 
-                  message: "Login effettuato, ma alcuni dati potrebbero non essere disponibili" 
+                  message: "Login effettuato con successo" 
                 }
               });
               return;
             }
-          } catch {
-            // Se getCurrentUser fallisce, vai comunque alla home
-            navigate('/', { 
+          } catch (error) {
+            console.error("📍 Errore durante la navigazione post-login:", error);
+            // Se tutto fallisce, vai alla dashboard utente
+            navigate('/dashboard/user', { 
               replace: true,
               state: { 
                 message: "Login effettuato con successo" 

@@ -212,7 +212,7 @@ export default function RoomGrid({ user }) {
 
 
   // Filtra le stanze per capacità, piano e disponibilità
-  const filteredRooms = rooms.filter(room => {
+  const filteredRooms = Array.isArray(rooms) ? rooms.filter(room => {
     // Filtra per capacità
     if (selectedCapacity !== "all") {
       const capacityRanges = {
@@ -240,7 +240,9 @@ export default function RoomGrid({ user }) {
       if (availability === "blocked" && room.status !== "bloccata") return false;
     }
     return true;
-  });
+  }) : [];
+
+  console.log('🔍 RoomGrid - Filtrate', filteredRooms.length, 'stanze su', Array.isArray(rooms) ? rooms.length : 0, 'totali');
 
   const handleQuickFilter = (criteria) => {
     // Implementa il filtro rapido
@@ -287,7 +289,7 @@ export default function RoomGrid({ user }) {
   };
 
   const handleRoomSave = (updatedRoom) => {
-    setRooms(rooms.map(r => r.id === updatedRoom.id ? updatedRoom : r));
+    setRooms(Array.isArray(rooms) ? rooms.map(r => r.id === updatedRoom.id ? updatedRoom : r) : [updatedRoom]);
     closeModal();
   };
 

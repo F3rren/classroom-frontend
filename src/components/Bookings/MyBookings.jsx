@@ -48,8 +48,8 @@ const MyBookings = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editingBooking, setEditingBooking] = useState(null);
+  const [deletingBooking, setDeletingBooking] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
   const [retryAttempts, setRetryAttempts] = useState(0);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -154,7 +154,6 @@ const MyBookings = () => {
           }
           
           if (userResult && userResult.success) {
-            setCurrentUser(userResult.data);
             
             // Carica sempre solo le proprie prenotazioni
             await loadBookings(false);
@@ -202,11 +201,14 @@ const MyBookings = () => {
     setEditingBooking(booking);
   };
 
-  const handleCancelBooking = async (bookingId) => {
-    if (!window.confirm('Sei sicuro di voler cancellare questa prenotazione?')) {
-      return;
-    }
+  const handleCancelBooking = (booking) => {
+    setDeletingBooking(booking);
+  };
 
+  const confirmCancelBooking = async () => {
+    if (!deletingBooking) return;
+    
+    const bookingId = deletingBooking.id;
     setCancellingId(bookingId);
     setOperationType('delete');
     setRetryAttempts(0);
@@ -231,6 +233,7 @@ const MyBookings = () => {
           setIsRetrying(false);
           setRetryAttempts(0);
           setCancellingId(null);
+          setDeletingBooking(null);
           return;
         } else {
           const errorType = categorizeError(result.error);
@@ -242,6 +245,7 @@ const MyBookings = () => {
             continue;
           } else {
             setError(enhancedMessage);
+            setTimeout(() => setError(null), 5000);
             break;
           }
         }
@@ -255,6 +259,7 @@ const MyBookings = () => {
           continue;
         } else {
           setError(enhancedMessage);
+          setTimeout(() => setError(null), 5000);
           break;
         }
       }
@@ -263,6 +268,11 @@ const MyBookings = () => {
     setCancellingId(null);
     setIsRetrying(false);
     setRetryAttempts(0);
+    setDeletingBooking(null);
+  };
+
+  const cancelDeleteBooking = () => {
+    setDeletingBooking(null);
   };
 
   const handleCloseEditModal = () => {
@@ -392,14 +402,19 @@ const MyBookings = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {Array.isArray(bookings) && bookings.map(booking => (
+          {Array.isArray(bookings) && bookings.map(booking => {
+            // Debug logging per vedere la struttura del booking
+            console.log('🔍 MyBookings - booking object:', booking);
+            console.log('🔍 MyBookings - booking.aula:', booking?.aula);
+            
+            return (
             <div key={booking.id} className="bg-white rounded-lg shadow-md overflow-hidden">
               <div className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center mb-2">
                       <h3 className="text-lg font-semibold text-gray-900 mr-3">
-                        {booking.roomName || `Stanza ${booking.roomId || booking.aulaId || 'N/A'}`}
+                        {booking.aula?.nome || booking.nomeAula || booking.roomName || `Stanza ${booking.roomId || booking.aulaId || 'Senza Nome'}`}
                       </h3>
                       <div className="flex items-center space-x-2">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(booking)}`}>
@@ -439,7 +454,7 @@ const MyBookings = () => {
                     
                     {/* Pulsante cancella */}
                     <button
-                      onClick={() => handleCancelBooking(booking.id)}
+                      onClick={() => handleCancelBooking(booking)}
                       disabled={cancellingId === booking.id}
                       className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 border border-red-300 rounded transition-colors disabled:opacity-50"
                     >
@@ -455,7 +470,8 @@ const MyBookings = () => {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       
@@ -466,6 +482,75 @@ const MyBookings = () => {
           onClose={handleCloseEditModal}
           onSuccess={handleEditSuccess}
         />
+      )}
+
+      {/* Modal di conferma cancellazione */}
+      {deletingBooking && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Conferma Cancellazione
+              </h3>
+            </div>
+            
+            <div className="px-6 py-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-gray-900">
+                    Sei sicuro di voler cancellare questa prenotazione?
+                  </h3>
+                  <div className="mt-2">
+                    <div className="text-sm text-gray-700">
+                      <p><strong>Stanza:</strong> {deletingBooking.aula?.nome || deletingBooking.nomeAula || deletingBooking.roomName || `Stanza ${deletingBooking.roomId || deletingBooking.aulaId || 'Senza Nome'}`}</p>
+                      <p><strong>Data:</strong> {formatDate(deletingBooking.date)}</p>
+                      <p><strong>Orario:</strong> {deletingBooking.startTime || 'N/A'} - {deletingBooking.endTime || 'N/A'}</p>
+                      {deletingBooking.purpose && (
+                        <p><strong>Scopo:</strong> {deletingBooking.purpose}</p>
+                      )}
+                    </div>
+                    <p className="text-sm text-red-600 mt-3">
+                      ⚠️ <strong>Attenzione:</strong> Questa azione non può essere annullata.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 bg-gray-50 flex space-x-3">
+              <button
+                onClick={cancelDeleteBooking}
+                disabled={cancellingId === deletingBooking?.id}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={confirmCancelBooking}
+                disabled={cancellingId === deletingBooking?.id}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {cancellingId === deletingBooking?.id ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    {isRetrying ? (
+                      <span>Tentativo {retryAttempts}/3...</span>
+                    ) : (
+                      <span>Cancellando...</span>
+                    )}
+                  </div>
+                ) : (
+                  'Cancella Definitivamente'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
