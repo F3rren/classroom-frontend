@@ -48,7 +48,7 @@ const TIME_SLOTS = [
 ];
 
 const BookingModal = ({ room, onClose, onSuccess }) => {
-  console.log('🎭 BookingModal aperto con room:', room);
+  
   
   const [formData, setFormData] = useState({
     date: '',
@@ -148,13 +148,13 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    console.log('🚀 BookingModal - handleSubmit avviato');
-    console.log('🏠 Room data:', room);
-    console.log('📋 Form data:', formData);
+    
+    
+    
     
     // Validazioni
     if (!formData.date || !formData.timeSlot) {
-      console.log('❌ Validazione fallita - data o timeSlot mancanti');
+      
       setError('Data e fascia oraria sono obbligatorie');
       return;
     }
@@ -163,12 +163,12 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
     const selectedDate = new Date(formData.date + 'T' + formData.startTime);
     const now = new Date();
     if (selectedDate <= now) {
-      console.log('❌ Validazione fallita - tentativo prenotazione nel passato');
+      
       setError('Non è possibile prenotare un\'aula per una data e ora già trascorse. Seleziona una data futura.');
       return;
     }
 
-    console.log('✅ Validazioni passate, inizio prenotazione...');
+    
     setLoading(true);
     setError(null);
     setRetryAttempts(0);
@@ -192,12 +192,6 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
           // corsoId: null // Rimosso - il controller richiede corsoId ma il service lo accetta null
         };
 
-        console.log('🎯 BookingModal - Tentativo prenotazione aula virtuale:', {
-          room: room,
-          bookingData: bookingData,
-          isVirtual: room?.isVirtual || room?.virtuale || false
-        });
-
         const result = await createBooking(bookingData);
 
         if (result.success) {
@@ -218,15 +212,7 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
           }
         }
       } catch (error) {
-        console.error('💥 Errore durante prenotazione:', error);
-        console.log('📊 Dettagli errore:', {
-          message: error.message,
-          stack: error.stack,
-          room: room,
-          formData: formData,
-          attempts: attempts
-        });
-        
+
         const errorType = categorizeError(error.message);
         const backendMessage = error.message || 'Errore di rete durante la prenotazione';
         
@@ -235,14 +221,14 @@ const BookingModal = ({ room, onClose, onSuccess }) => {
           await new Promise(resolve => setTimeout(resolve, attempts * 1000));
           continue;
         } else {
-          console.log('🔴 Impostazione errore finale:', backendMessage);
+          
           setError(backendMessage);
           break;
         }
       }
     }
     
-    console.log('🏁 handleSubmit terminato');
+    
     setLoading(false);
     setIsRetrying(false);
     setRetryAttempts(0);

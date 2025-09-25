@@ -46,18 +46,12 @@ function createAdminHeaders(requestId) {
 async function handleStandardResponse(response, requestId, successMessage, errorMessage) {
   try {
     const data = await response.json();
-    console.log(`🔍 [${requestId}] Risposta ricevuta:`, {
-      status: response.status,
-      success: data.success,
-      sessionId: data.sessionId,
-      hasData: !!data.data
-    });
-    
+
     if (response.ok) {
       // Gestione successo con struttura standardizzata
       const resultData = data.success && data.data ? data.data : data;
       
-      console.log(`✅ [${requestId}] Operazione completata con successo`);
+      
       return {
         success: true,
         error: null,
@@ -67,20 +61,16 @@ async function handleStandardResponse(response, requestId, successMessage, error
       // Gestione errori con struttura standardizzata
       const errorMsg = data.userMessage || data.message || errorMessage;
       
-      // Log sessionId se presente per debugging
-      if (data.sessionId) {
-        console.log(`🔍 [${requestId}] SessionId errore:`, data.sessionId);
-      }
       
-      console.error(`❌ [${requestId}] Errore - Status: ${response.status}, Messaggio:`, errorMsg);
+      
       return {
         success: false,
         error: errorMsg,
         data: null
       };
     }
-  } catch (parseError) {
-    console.error(`❌ [${requestId}] Errore parsing risposta:`, parseError);
+  } catch {
+    
     return {
       success: false,
       error: "Errore nella comunicazione con il server",
@@ -95,8 +85,8 @@ async function handleStandardResponse(response, requestId, successMessage, error
  * @param {string} requestId - ID della richiesta
  * @returns {{success: boolean, error: string, data: null}}
  */
-function handleNetworkError(error, requestId) {
-  console.error(`🌐 [${requestId}] Errore di rete:`, error);
+function handleNetworkError(error) {
+  
   
   let errorMessage = "Errore di connessione al server";
   
@@ -123,12 +113,12 @@ function handleNetworkError(error, requestId) {
  */
 export async function getUsersList() {
   const requestId = generateRequestId('GET_USERS');
-  console.log(`👥 [${requestId}] Avvio recupero lista utenti...`);
+  
   
   // Validazione token
   const token = getValidToken();
   if (!token) {
-    console.warn(`⚠️ [${requestId}] Token mancante per getUsersList`);
+    
     return {
       success: false,
       error: "Token mancante. Effettua il login.",
@@ -137,14 +127,14 @@ export async function getUsersList() {
   }
 
   try {
-    console.log(`📡 [${requestId}] Invio richiesta a /api/admin/users`);
+    
     
     const response = await fetch("/api/admin/users", {
       method: "GET",
       headers: createAdminHeaders(requestId)
     });
     
-    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
     
     const result = await handleStandardResponse(
       response, 
@@ -162,14 +152,14 @@ export async function getUsersList() {
         usersArray = result.data;
       } else if (Array.isArray(result.data.users)) {
         // Struttura backend standard: {users: [], totalUsers: n}
-        console.log(`📊 [${requestId}] Usando struttura backend standard`);
+        
         usersArray = result.data.users;
       } else {
-        console.warn(`⚠️ [${requestId}] Struttura users non riconosciuta, usando array vuoto`);
+        
         usersArray = [];
       }
       
-      console.log(`📈 [${requestId}] Trovati ${usersArray.length} utenti`);
+      
       result.data = usersArray;
     }
     
@@ -187,16 +177,11 @@ export async function getUsersList() {
  */
 export async function createUser(userData) {
   const requestId = generateRequestId('CREATE_USER');
-  console.log(`➕ [${requestId}] Avvio creazione utente:`, {
-    email: userData?.email,
-    username: userData?.username,
-    ruolo: userData?.ruolo
-  });
-  
+
   // Validazione token
   const token = getValidToken();
   if (!token) {
-    console.warn(`⚠️ [${requestId}] Token mancante per createUser`);
+    
     return {
       success: false,
       error: "Token mancante. Effettua il login.",
@@ -206,7 +191,7 @@ export async function createUser(userData) {
   
   // Validazione dati utente
   if (!userData || typeof userData !== 'object') {
-    console.warn(`⚠️ [${requestId}] Dati utente non validi`);
+    
     return {
       success: false,
       error: "Dati utente non forniti o non validi.",
@@ -219,7 +204,7 @@ export async function createUser(userData) {
   const missingFields = requiredFields.filter(field => !userData[field] || userData[field].trim().length === 0);
   
   if (missingFields.length > 0) {
-    console.warn(`⚠️ [${requestId}] Campi obbligatori mancanti:`, missingFields);
+    
     return {
       success: false,
       error: `Campi obbligatori mancanti: ${missingFields.join(', ')}`,
@@ -230,7 +215,7 @@ export async function createUser(userData) {
   // Validazione email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(userData.email)) {
-    console.warn(`⚠️ [${requestId}] Formato email non valido`);
+    
     return {
       success: false,
       error: "Il formato dell'email non è valido.",
@@ -239,7 +224,7 @@ export async function createUser(userData) {
   }
 
   try {
-    console.log(`📡 [${requestId}] Invio richiesta di creazione utente`);
+    
     
     const response = await fetch("/api/admin/register", {
       method: "POST",
@@ -247,7 +232,7 @@ export async function createUser(userData) {
       body: JSON.stringify(userData)
     });
     
-    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
     
     return await handleStandardResponse(
       response,
@@ -269,12 +254,12 @@ export async function createUser(userData) {
  */
 export async function updateUser(userId, userData) {
   const requestId = generateRequestId('UPDATE_USER');
-  console.log(`✏️ [${requestId}] Avvio aggiornamento utente ID: ${userId}`);
+  
   
   // Validazione token
   const token = getValidToken();
   if (!token) {
-    console.warn(`⚠️ [${requestId}] Token mancante per updateUser`);
+    
     return {
       success: false,
       error: "Token mancante. Effettua il login.",
@@ -284,7 +269,7 @@ export async function updateUser(userId, userData) {
   
   // Validazione userId
   if (!userId || (typeof userId !== 'number' && typeof userId !== 'string')) {
-    console.warn(`⚠️ [${requestId}] ID utente non valido:`, userId);
+    
     return {
       success: false,
       error: "ID utente non fornito o non valido.",
@@ -294,7 +279,7 @@ export async function updateUser(userId, userData) {
   
   // Validazione userData
   if (!userData || typeof userData !== 'object' || Object.keys(userData).length === 0) {
-    console.warn(`⚠️ [${requestId}] Dati di aggiornamento non validi`);
+    
     return {
       success: false,
       error: "Dati di aggiornamento non forniti o non validi.",
@@ -306,7 +291,7 @@ export async function updateUser(userId, userData) {
   if (userData.email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(userData.email)) {
-      console.warn(`⚠️ [${requestId}] Formato email non valido nell'aggiornamento`);
+      
       return {
         success: false,
         error: "Il formato dell'email non è valido.",
@@ -316,7 +301,7 @@ export async function updateUser(userId, userData) {
   }
 
   try {
-    console.log(`📡 [${requestId}] Invio richiesta di aggiornamento per utente ${userId}`);
+    
     
     const response = await fetch(`/api/admin/users/${userId}`, {
       method: "PUT",
@@ -324,7 +309,7 @@ export async function updateUser(userId, userData) {
       body: JSON.stringify(userData)
     });
     
-    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
     
     return await handleStandardResponse(
       response,
@@ -345,12 +330,12 @@ export async function updateUser(userId, userData) {
  */
 export async function deleteUser(userId) {
   const requestId = generateRequestId('DELETE_USER');
-  console.log(`🗑️ [${requestId}] Avvio eliminazione utente ID: ${userId}`);
+  
   
   // Validazione token
   const token = getValidToken();
   if (!token) {
-    console.warn(`⚠️ [${requestId}] Token mancante per deleteUser`);
+    
     return {
       success: false,
       error: "Token mancante. Effettua il login.",
@@ -360,7 +345,7 @@ export async function deleteUser(userId) {
   
   // Validazione userId
   if (!userId || (typeof userId !== 'number' && typeof userId !== 'string')) {
-    console.warn(`⚠️ [${requestId}] ID utente non valido per eliminazione:`, userId);
+    
     return {
       success: false,
       error: "ID utente non fornito o non valido.",
@@ -369,14 +354,14 @@ export async function deleteUser(userId) {
   }
 
   try {
-    console.log(`📡 [${requestId}] Invio richiesta di eliminazione per utente ${userId}`);
+    
     
     const response = await fetch(`/api/admin/delete/${userId}`, {
       method: "DELETE",
       headers: createAdminHeaders(requestId)
     });
     
-    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
     
     const result = await handleStandardResponse(
       response,
@@ -409,7 +394,7 @@ export async function deleteUser(userId) {
  */
 export async function getUserById(userId) {
   const requestId = generateRequestId('GET_USER');
-  console.log(`👤 [${requestId}] Recupero utente ID: ${userId}`);
+  
   
   const token = getValidToken();
   if (!token) {
@@ -459,12 +444,12 @@ export async function toggleUserStatus(userId, isActive) {
  */
 export async function deleteRoom(roomId) {
   const requestId = generateRequestId('DELETE_ROOM');
-  console.log(`🗑️ [${requestId}] Avvio eliminazione stanza ${roomId}`);
+  
   
   // Validazione token
   const token = getValidToken();
   if (!token) {
-    console.warn(`⚠️ [${requestId}] Token mancante per deleteRoom`);
+    
     return {
       success: false,
       error: "Token mancante. Effettua il login.",
@@ -474,7 +459,7 @@ export async function deleteRoom(roomId) {
   
   // Validazione roomId
   if (!roomId || (typeof roomId !== 'number' && typeof roomId !== 'string')) {
-    console.warn(`⚠️ [${requestId}] ID stanza non valido per eliminazione:`, roomId);
+    
     return {
       success: false,
       error: "ID stanza non fornito o non valido.",
@@ -483,14 +468,14 @@ export async function deleteRoom(roomId) {
   }
 
   try {
-    console.log(`📡 [${requestId}] Invio richiesta di eliminazione per stanza ${roomId}`);
+    
     
     const response = await fetch(`/api/admin/rooms/${roomId}`, {
       method: "DELETE",
       headers: createAdminHeaders(requestId)
     });
     
-    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
     
     const result = await handleStandardResponse(
       response,

@@ -18,23 +18,23 @@ export function useVirtualRooms() {
     setError(null);
 
     try {
-      console.log('🌐 useVirtualRooms: Caricamento stanze virtuali...');
+      
       
       const result = await getVirtualRoomsDetailed();
 
       if (result.success) {
         setVirtualRooms(result.data || []);
-        console.log(`✅ useVirtualRooms: Caricate ${result.data?.length || 0} stanze virtuali`);
+        
       } else {
         setError(result.error || 'Errore nel caricamento delle stanze virtuali');
         setVirtualRooms([]);
-        console.error('❌ useVirtualRooms: Errore caricamento stanze virtuali:', result.error);
+        
       }
     } catch (err) {
       const errorMessage = 'Errore di connessione durante il caricamento delle stanze virtuali';
       setError(errorMessage);
       setVirtualRooms([]);
-      console.error('❌ useVirtualRooms: Errore di rete:', err);
+      
     } finally {
       setLoading(false);
     }
@@ -42,7 +42,7 @@ export function useVirtualRooms() {
 
   // Funzione per ricaricare le stanze virtuali (esposta per componenti)
   const refreshVirtualRooms = useCallback(() => {
-    console.log('🔄 useVirtualRooms: Refresh richiesto');
+    
     loadVirtualRooms();
   }, [loadVirtualRooms]);
 

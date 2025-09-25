@@ -56,7 +56,7 @@ function DashboardRedirect() {
 
 function App() {
   const isAuthenticated = !!localStorage.getItem("token");
-  console.log("Is authenticated:", isAuthenticated);
+  
   
   return (
     <>

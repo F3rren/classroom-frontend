@@ -64,8 +64,8 @@ const TIME_SLOTS = [
 ];
 
 const EditBookingModal = ({ booking, room, onClose, onSuccess }) => {
-  console.log('🔍 EditBookingModal - booking data:', booking);
-  console.log('🔍 EditBookingModal - room data:', room);
+  
+  
   
   const [roomName, setRoomName] = useState('');
   
@@ -84,7 +84,7 @@ const EditBookingModal = ({ booking, room, onClose, onSuccess }) => {
     capacity: booking?.aula?.capienza || booking?.capacity || booking?.capienza || null
   };
   
-  console.log('🔍 EditBookingModal - roomData final:', roomData);
+  
   
   const [formData, setFormData] = useState({
     date: '',
@@ -114,11 +114,11 @@ const EditBookingModal = ({ booking, room, onClose, onSuccess }) => {
             );
             if (targetRoom) {
               setRoomName(targetRoom.nome || targetRoom.name || '');
-              console.log('🔍 EditBookingModal - Found room name:', targetRoom.nome || targetRoom.name);
+              
             }
           }
-        } catch (error) {
-          console.warn('⚠️ EditBookingModal - Could not fetch room name:', error);
+        } catch {
+          return null;
         }
       }
     };
@@ -254,15 +254,10 @@ const EditBookingModal = ({ booking, room, onClose, onSuccess }) => {
           descrizione: formData.purpose || ''
         };
 
-        console.log('🔄 EditBookingModal - Updating booking:', {
-          bookingId: booking.id,
-          updateData
-        });
-
         const result = await updateBooking(booking.id, updateData);
         
         if (result.success) {
-          console.log('✅ EditBookingModal - Booking updated successfully:', result.data);
+          
           if (onSuccess) {
             onSuccess(result.data);
           }
@@ -286,7 +281,7 @@ const EditBookingModal = ({ booking, room, onClose, onSuccess }) => {
           }
         }
       } catch (error) {
-        console.error('❌ EditBookingModal - Error updating booking:', error);
+        
         const errorType = categorizeError(error.message);
         const enhancedMessage = getEnhancedErrorMessage(error.message, errorType);
         

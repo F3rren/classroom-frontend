@@ -404,8 +404,8 @@ const MyBookings = () => {
         <div className="space-y-4">
           {Array.isArray(bookings) && bookings.map(booking => {
             // Debug logging per vedere la struttura del booking
-            console.log('🔍 MyBookings - booking object:', booking);
-            console.log('🔍 MyBookings - booking.aula:', booking?.aula);
+            
+            
             
             return (
             <div key={booking.id} className="bg-white rounded-lg shadow-md overflow-hidden">

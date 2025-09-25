@@ -87,21 +87,21 @@ export default function Login() {
             // Prima prova a ottenere l'utente dai dati del login (nuova struttura)
             if (loginResult.data?.user) {
               user = loginResult.data.user;
-              console.log("📍 Utente ottenuto dal login:", user);
+              
             } 
             // Potrebbe essere anche direttamente in loginResult.data
             else if (loginResult.data?.ruolo || loginResult.data?.email) {
               user = loginResult.data;
-              console.log("📍 Utente ottenuto direttamente dai dati del login:", user);
+              
             }
             
             // Solo se non abbiamo i dati utente dal login, facciamo la chiamata separata
             if (!user) {
-              console.log("📍 Fallback: utilizzo getCurrentUser");
+              
               const userResult = await getCurrentUser();
               if (userResult?.success && userResult?.data) {
                 user = userResult.data;
-                console.log("📍 Utente ottenuto da getCurrentUser:", user);
+                
               }
             }
             
@@ -113,11 +113,11 @@ export default function Login() {
                 ? '/dashboard/adminpanel' 
                 : '/dashboard/user';
               
-              console.log(`📍 Navigazione verso ${redirectPath} per utente ${userRole}`);
+              
               navigate(redirectPath, { replace: true });
               return;
             } else {
-              console.log("📍 Ruolo utente non trovato, dati disponibili:", user);
+              
               // Fallback: vai alla dashboard utente generica
               navigate('/dashboard/user', { 
                 replace: true,
@@ -127,8 +127,7 @@ export default function Login() {
               });
               return;
             }
-          } catch (error) {
-            console.error("📍 Errore durante la navigazione post-login:", error);
+          } catch {
             // Se tutto fallisce, vai alla dashboard utente
             navigate('/dashboard/user', { 
               replace: true,

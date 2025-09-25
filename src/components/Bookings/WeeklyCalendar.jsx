@@ -66,8 +66,8 @@ const WeeklyCalendar = () => {
   const [operationType, setOperationType] = useState(null);
 
   // Debug logging per monitorare i tipi di dato
-  console.log('🔍 WeeklyCalendar render - rooms type:', typeof rooms, 'isArray:', Array.isArray(rooms));
-  console.log('🔍 WeeklyCalendar render - bookings type:', typeof bookings, 'isArray:', Array.isArray(bookings));
+  
+  
 
   // Fasce orarie fisse
   const timeSlots = [
@@ -154,13 +154,13 @@ const WeeklyCalendar = () => {
             
             // Assicurati che virtualRooms sia sempre un array
             if (!Array.isArray(virtualRooms)) {
-              console.warn('⚠️ WeeklyCalendar: roomsResult.data non è un array:', virtualRooms);
+              
               virtualRooms = [];
             }
             
             setRooms(virtualRooms);
           } else {
-            console.error('❌ WeeklyCalendar: Errore caricamento stanze:', roomsResult.error);
+            
             setRooms([]); // Fallback su array vuoto
             throw new Error(roomsResult.error || 'Errore nel caricamento stanze virtuali');
           }
@@ -172,13 +172,13 @@ const WeeklyCalendar = () => {
             
             // Assicurati che allBookings sia sempre un array
             if (!Array.isArray(allBookings)) {
-              console.warn('⚠️ WeeklyCalendar: bookingsResult.data non è un array:', allBookings);
+              
               allBookings = [];
             }
             
             setBookings(allBookings);
           } else {
-            console.error('❌ WeeklyCalendar: Errore caricamento prenotazioni:', bookingsResult.error);
+            
             setBookings([]); // Fallback su array vuoto
             throw new Error(bookingsResult.error || 'Errore nel caricamento prenotazioni');
           }
@@ -205,7 +205,7 @@ const WeeklyCalendar = () => {
   // Verifica se uno slot è occupato
   const isSlotOccupied = (roomId, date, timeSlot) => {
     if (!Array.isArray(bookings)) {
-      console.warn('⚠️ isSlotOccupied: bookings non è un array');
+      
       return false;
     }
     const dateStr = formatDateLocal(date);
@@ -230,7 +230,7 @@ const WeeklyCalendar = () => {
   // Trova la prenotazione per uno slot specifico
   const findBookingForSlot = (roomId, date, timeSlot) => {
     if (!Array.isArray(bookings)) {
-      console.warn('⚠️ findBookingForSlot: bookings non è un array');
+      
       return null;
     }
     const dateStr = formatDateLocal(date);
@@ -255,7 +255,7 @@ const WeeklyCalendar = () => {
   // Trova i dettagli del blocco per una stanza
   const findBlockDetailsForRoom = (roomId) => {
     if (!Array.isArray(rooms)) {
-      console.warn('⚠️ findBlockDetailsForRoom: rooms non è un array');
+      
       return null;
     }
     const room = rooms.find(r => r.id === roomId);

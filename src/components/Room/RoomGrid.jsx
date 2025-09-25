@@ -242,7 +242,7 @@ export default function RoomGrid({ user }) {
     return true;
   }) : [];
 
-  console.log('🔍 RoomGrid - Filtrate', filteredRooms.length, 'stanze su', Array.isArray(rooms) ? rooms.length : 0, 'totali');
+  
 
   const handleQuickFilter = (criteria) => {
     // Implementa il filtro rapido

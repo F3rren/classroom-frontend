@@ -19,7 +19,7 @@ export function usePhysicalRooms(includeDetails = false) {
     setError(null);
 
     try {
-      console.log(`🏠 usePhysicalRooms: Caricamento stanze fisiche ${includeDetails ? 'con dettagli' : 'semplici'}...`);
+      
       
       const result = includeDetails 
         ? await getPhysicalRoomsDetailed()
@@ -27,17 +27,17 @@ export function usePhysicalRooms(includeDetails = false) {
 
       if (result.success) {
         setPhysicalRooms(result.data || []);
-        console.log(`✅ usePhysicalRooms: Caricate ${result.data?.length || 0} stanze fisiche`);
+        
       } else {
         setError(result.error || 'Errore nel caricamento delle stanze fisiche');
         setPhysicalRooms([]);
-        console.error('❌ usePhysicalRooms: Errore caricamento stanze fisiche:', result.error);
+        
       }
     } catch (err) {
       const errorMessage = 'Errore di connessione durante il caricamento delle stanze fisiche';
       setError(errorMessage);
       setPhysicalRooms([]);
-      console.error('❌ usePhysicalRooms: Errore di rete:', err);
+      
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ export function usePhysicalRooms(includeDetails = false) {
 
   // Funzione per ricaricare le stanze fisiche (esposta per componenti)
   const refreshPhysicalRooms = useCallback(() => {
-    console.log('🔄 usePhysicalRooms: Refresh richiesto');
+    
     loadPhysicalRooms();
   }, [loadPhysicalRooms]);
 

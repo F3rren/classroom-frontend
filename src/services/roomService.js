@@ -45,18 +45,12 @@ function createRoomHeaders(requestId) {
 async function handleRoomResponse(response, requestId, errorMessage) {
   try {
     const data = await response.json();
-    console.log(`🔍 [${requestId}] Risposta ricevuta:`, {
-      status: response.status,
-      success: data.success,
-      sessionId: data.sessionId,
-      hasData: !!data.data
-    });
-    
+        
     if (response.ok) {
       // Gestione successo con struttura standardizzata
       const resultData = data.success && data.data ? data.data : data;
       
-      console.log(`✅ [${requestId}] Operazione rooms completata con successo`);
+      
       return {
         success: true,
         error: null,
@@ -66,20 +60,15 @@ async function handleRoomResponse(response, requestId, errorMessage) {
       // Gestione errori con struttura standardizzata
       const errorMsg = data.userMessage || data.message || errorMessage;
       
-      // Log sessionId se presente per debugging
-      if (data.sessionId) {
-        console.log(`🔍 [${requestId}] SessionId errore:`, data.sessionId);
-      }
       
-      console.error(`❌ [${requestId}] Errore rooms - Status: ${response.status}, Messaggio:`, errorMsg);
+      
       return {
         success: false,
         error: errorMsg,
         data: null
       };
     }
-  } catch (parseError) {
-    console.error(`❌ [${requestId}] Errore parsing risposta rooms:`, parseError);
+  } catch {
     return {
       success: false,
       error: "Errore nella comunicazione con il server",
@@ -94,8 +83,8 @@ async function handleRoomResponse(response, requestId, errorMessage) {
  * @param {string} requestId - ID della richiesta
  * @returns {{success: boolean, error: string, data: null}}
  */
-function handleRoomNetworkError(error, requestId) {
-  console.error(`🌐 [${requestId}] Errore di rete rooms:`, error);
+function handleRoomNetworkError(error) {
+  
   
   let errorMessage = "Errore di connessione al server";
   
@@ -122,12 +111,12 @@ function handleRoomNetworkError(error, requestId) {
  */
 export async function getRoomList() {
   const requestId = generateRequestId('GET_ROOMS');
-  console.log(`🏠 [${requestId}] Avvio recupero lista stanze...`);
+  
   
   // Validazione token
   const token = getValidToken();
   if (!token) {
-    console.warn(`⚠️ [${requestId}] Token mancante per getRoomList`);
+    
     return {
       success: false,
       error: "Token mancante. Effettua il login.",
@@ -136,14 +125,14 @@ export async function getRoomList() {
   }
 
   try {
-    console.log(`📡 [${requestId}] Invio richiesta a /api/rooms`);
+    
     
     const response = await fetch("/api/rooms", {
       method: "GET",
       headers: createRoomHeaders(requestId)
     });
     
-    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}`);
+    
     
     const result = await handleRoomResponse(
       response, 
@@ -153,8 +142,8 @@ export async function getRoomList() {
     
     // Post-elaborazione per normalizzare i dati delle stanze
     if (result.success && result.data) {
-      console.log(`🔍 [${requestId}] Struttura result.data:`, result.data);
-      console.log(`🔍 [${requestId}] Tipo di result.data:`, typeof result.data, Array.isArray(result.data));
+      
+      
       
       let roomsArray = [];
       
@@ -162,17 +151,17 @@ export async function getRoomList() {
         roomsArray = result.data;
       } else if (Array.isArray(result.data.rooms)) {
         // Fallback per strutture legacy
-        console.warn(`⚠️ [${requestId}] Usando struttura rooms legacy`);
+        
         roomsArray = result.data.rooms;
       } else {
-        console.warn(`⚠️ [${requestId}] Struttura rooms non riconosciuta, usando array vuoto`);
-        console.log(`🔍 [${requestId}] Keys in result.data:`, Object.keys(result.data));
+        
+        
         roomsArray = [];
       }
       
       // Normalizzazione dati
       const normalizedRooms = roomsArray.map(room => normalizeRoomData(room));
-      console.log(`📊 [${requestId}] Normalizzate ${normalizedRooms.length} stanze`);
+      
       
       result.data = normalizedRooms;
     }
@@ -190,12 +179,12 @@ export async function getRoomList() {
  */
 export async function getDetailedRooms() {
   const requestId = generateRequestId('GET_DETAILED_ROOMS');
-  console.log(`🏠📋 [${requestId}] Avvio recupero stanze dettagliate...`);
+  
   
   // Validazione token
   const token = getValidToken();
   if (!token) {
-    console.warn(`⚠️ [${requestId}] Token mancante per getDetailedRooms`);
+    
     return {
       success: false,
       error: "Token mancante. Effettua il login.",
@@ -204,20 +193,20 @@ export async function getDetailedRooms() {
   }
 
   try {
-    console.log(`� [${requestId}] Tentativo connessione a /api/rooms/detailed`);
+    
     
     const response = await fetch("/api/rooms/detailed", {
       method: "GET",
       headers: createRoomHeaders(requestId)
     });
     
-    console.log(`📡 [${requestId}] Risposta ricevuta - Status: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
+    
     
     if (response.ok) {
       // Verifica che la risposta sia JSON
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        console.warn(`⚠️ [${requestId}] Endpoint detailed non implementato (content-type: ${contentType})`);
+        
         throw new Error("Endpoint /api/rooms/detailed non implementato");
       }
       
@@ -231,16 +220,11 @@ export async function getDetailedRooms() {
       if (result.success && result.data) {
         let roomsArray = Array.isArray(result.data) ? result.data : (result.data.rooms || []);
         
-        const normalizedRooms = roomsArray.map((room, index) => {
-          console.log(`🔧 [${requestId}] Normalizzando stanza ${index + 1}/${roomsArray.length}:`, {
-            id: room.id,
-            name: room.name || room.nome,
-            bookingsCount: room.bookings ? room.bookings.length : 0
-          });
-          return normalizeRoomData(room);
+        const normalizedRooms = roomsArray.map((room) => {
+                    return normalizeRoomData(room);
         });
         
-        console.log(`✅ [${requestId}] Normalizzate ${normalizedRooms.length} stanze dettagliate`);
+        
         result.data = normalizedRooms;
       }
       
@@ -248,11 +232,11 @@ export async function getDetailedRooms() {
       
     } else if (response.status === 404) {
       // Fallback all'endpoint base se detailed non esiste
-      console.log(`🔄 [${requestId}] Endpoint detailed non disponibile, fallback a /api/rooms`);
+      
       
       const fallbackResult = await getRoomList();
       if (fallbackResult.success) {
-        console.log(`✅ [${requestId}] Fallback riuscito con ${fallbackResult.data.length} stanze`);
+        
         return {
           success: true,
           error: "Endpoint dettagliato non disponibile, utilizzando dati base",
@@ -271,15 +255,15 @@ export async function getDetailedRooms() {
     }
     
   } catch (err) {
-    console.error(`❌ [${requestId}] Errore in getDetailedRooms:`, err);
+    
     
     // Tentativo di fallback in caso di errore di rete
     if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      console.log(`🔄 [${requestId}] Errore di rete, tentativo fallback`);
+      
       try {
         const fallbackResult = await getRoomList();
         if (fallbackResult.success) {
-          console.log(`✅ [${requestId}] Fallback di rete riuscito`);
+          
           return {
             success: true,
             error: "Server non raggiungibile per dati dettagliati, utilizzando dati base",
@@ -287,7 +271,7 @@ export async function getDetailedRooms() {
           };
         }
       } catch (fallbackError) {
-        console.error(`❌ [${requestId}] Fallback di rete fallito:`, fallbackError);
+       return fallbackError;
       }
     }
     
@@ -302,12 +286,12 @@ export async function getDetailedRooms() {
  */
 export async function getRoomDetails(roomId) {
   const requestId = generateRequestId('GET_ROOM_DETAILS');
-  console.log(`🏠🔍 [${requestId}] Recupero dettagli stanza ID: ${roomId}`);
+  
   
   // Validazione token
   const token = getValidToken();
   if (!token) {
-    console.warn(`⚠️ [${requestId}] Token mancante per getRoomDetails`);
+    
     return {
       success: false,
       error: "Token mancante. Effettua il login.",
@@ -317,7 +301,7 @@ export async function getRoomDetails(roomId) {
   
   // Validazione roomId
   if (!roomId) {
-    console.warn(`⚠️ [${requestId}] ID stanza non fornito`);
+    
     return {
       success: false,
       error: "ID stanza non fornito.",
@@ -327,7 +311,7 @@ export async function getRoomDetails(roomId) {
 
   try {
     // Prima prova con l'endpoint details
-    console.log(`📡 [${requestId}] Tentativo endpoint dettagliato: /api/rooms/${roomId}/details`);
+    
     
     const detailsResponse = await fetch(`/api/rooms/${roomId}/details`, {
       method: "GET",
@@ -335,7 +319,7 @@ export async function getRoomDetails(roomId) {
     });
 
     if (detailsResponse.ok) {
-      console.log(`✅ [${requestId}] Endpoint dettagliato disponibile`);
+      
       
       const result = await handleRoomResponse(
         detailsResponse,
@@ -350,7 +334,7 @@ export async function getRoomDetails(roomId) {
                                  normalizedData.currentBooking || 
                                  normalizedData.nextBooking);
         
-        console.log(`📊 [${requestId}] Dettagli stanza processati - Prenotazioni: ${hasBookingInfo}`);
+        
         
         return {
           success: true,
@@ -364,7 +348,7 @@ export async function getRoomDetails(roomId) {
     }
 
     // Fallback all'endpoint base se details fallisce
-    console.log(`🔄 [${requestId}] Endpoint details fallito (${detailsResponse.status}), provo endpoint base`);
+    
     
     const baseResponse = await fetch(`/api/rooms/${roomId}`, {
       method: "GET",
@@ -372,7 +356,7 @@ export async function getRoomDetails(roomId) {
     });
 
     if (baseResponse.ok) {
-      console.log(`✅ [${requestId}] Endpoint base disponibile`);
+      
       
       const result = await handleRoomResponse(
         baseResponse,
@@ -390,7 +374,7 @@ export async function getRoomDetails(roomId) {
           isAvailable: true
         };
         
-        console.log(`📊 [${requestId}] Dati base stanza processati (senza prenotazioni)`);
+        
         
         return {
           success: true,
@@ -404,7 +388,7 @@ export async function getRoomDetails(roomId) {
     }
 
     // Se entrambi gli endpoint falliscono
-    console.error(`❌ [${requestId}] Entrambi gli endpoint falliti per stanza ${roomId}`);
+    
     
     return await handleRoomResponse(
       baseResponse,
@@ -426,7 +410,7 @@ export async function getRoomDetails(roomId) {
  */
 export function normalizeRoomData(roomData) {
   if (!roomData) {
-    console.warn('⚠️ normalizeRoomData: roomData è null o undefined');
+    
     return null;
   }
 
@@ -494,14 +478,14 @@ export function normalizeRoomData(roomData) {
     
     // Validazione finale
     if (!normalized.id) {
-      console.warn('⚠️ normalizeRoomData: Stanza senza ID valido:', roomData);
+      
       return null;
     }
     
     return normalized;
     
-  } catch (error) {
-    console.error('❌ Errore durante normalizzazione dati stanza:', error, roomData);
+  } catch  {
+    
     return null;
   }
 }
@@ -515,7 +499,7 @@ export function normalizeRoomData(roomData) {
  */
 export function isRoomCurrentlyOccupied(room) {
   if (!room) {
-    console.warn('⚠️ isRoomCurrentlyOccupied: room è null o undefined');
+    
     return false;
   }
 
@@ -527,14 +511,9 @@ export function isRoomCurrentlyOccupied(room) {
       try {
         const endTime = new Date(`${room.currentBooking.date}T${room.currentBooking.endTime}`);
         const isOccupied = endTime > now;
-        console.log(`🔍 Stanza ${room.id} - Prenotazione corrente: ${isOccupied}`, {
-          currentBooking: room.currentBooking,
-          endTime: endTime.toISOString(),
-          now: now.toISOString()
-        });
-        return isOccupied;
-      } catch (dateError) {
-        console.warn(`⚠️ Errore parsing data prenotazione corrente per stanza ${room.id}:`, dateError);
+                return isOccupied;
+      } catch  {
+        return false;
       }
     }
 
@@ -545,24 +524,22 @@ export function isRoomCurrentlyOccupied(room) {
           const start = new Date(`${booking.date}T${booking.startTime}`);
           const end = new Date(`${booking.date}T${booking.endTime}`);
           return start <= now && now <= end;
-        } catch (dateError) {
-          console.warn(`⚠️ Errore parsing date prenotazione per stanza ${room.id}:`, dateError, booking);
+        } catch {
+          
           return false;
         }
       });
       
       const isOccupied = !!currentBooking;
-      if (isOccupied) {
-        console.log(`🔍 Stanza ${room.id} - Occupata da prenotazione:`, currentBooking);
-      }
+     
       return isOccupied;
     }
 
     // Default: stanza libera
     return false;
     
-  } catch (error) {
-    console.error(`❌ Errore controllo occupazione stanza ${room?.id}:`, error);
+  } catch  {
+    
     return false;
   }
 }
@@ -574,13 +551,13 @@ export function isRoomCurrentlyOccupied(room) {
  */
 export function getNextBooking(room) {
   if (!room) {
-    console.warn('⚠️ getNextBooking: room è null o undefined');
+    
     return null;
   }
   
   // Controlla se c'è una prossima prenotazione esplicita
   if (room.nextBooking) {
-    console.log(`🔍 Stanza ${room.id} - Prossima prenotazione esplicita:`, room.nextBooking);
+    
     return room.nextBooking;
   }
 
@@ -598,8 +575,8 @@ export function getNextBooking(room) {
         try {
           const startTime = new Date(`${booking.date}T${booking.startTime}`);
           return startTime > now;
-        } catch (dateError) {
-          console.warn(`⚠️ Errore parsing data per stanza ${room.id}:`, dateError, booking);
+        } catch  {
+          
           return false;
         }
       })
@@ -608,22 +585,18 @@ export function getNextBooking(room) {
           const dateA = new Date(`${a.date}T${a.startTime}`);
           const dateB = new Date(`${b.date}T${b.startTime}`);
           return dateA - dateB;
-        } catch (dateError) {
-          console.warn(`⚠️ Errore ordinamento prenotazioni per stanza ${room.id}:`, dateError);
+        } catch {
+          
           return 0;
         }
       });
 
     const nextBooking = futureBookings[0] || null;
     
-    if (nextBooking) {
-      console.log(`🔍 Stanza ${room.id} - Prossima prenotazione trovata:`, nextBooking);
-    }
-    
     return nextBooking;
     
-  } catch (error) {
-    console.error(`❌ Errore ricerca prossima prenotazione per stanza ${room?.id}:`, error);
+  } catch {
+    
     return null;
   }
 }
@@ -667,7 +640,7 @@ export function getRoomStatus(room) {
  */
 export function filterRoomsByFloor(rooms, floor) {
   if (!Array.isArray(rooms)) {
-    console.warn('⚠️ filterRoomsByFloor: rooms non è un array');
+    
     return [];
   }
   
@@ -685,7 +658,7 @@ export function filterRoomsByFloor(rooms, floor) {
  */
 export function filterRoomsByCapacity(rooms, minCapacity) {
   if (!Array.isArray(rooms)) {
-    console.warn('⚠️ filterRoomsByCapacity: rooms non è un array');
+    
     return [];
   }
   
@@ -702,7 +675,7 @@ export function filterRoomsByCapacity(rooms, minCapacity) {
  */
 export function filterAvailableRooms(rooms) {
   if (!Array.isArray(rooms)) {
-    console.warn('⚠️ filterAvailableRooms: rooms non è un array');
+    
     return [];
   }
   
@@ -744,7 +717,7 @@ export function searchRooms(rooms, searchTerm) {
  */
 export function sortRooms(rooms, sortBy = 'name', direction = 'asc') {
   if (!Array.isArray(rooms)) {
-    console.warn('⚠️ sortRooms: rooms non è un array');
+    
     return [];
   }
   
@@ -788,7 +761,7 @@ export function sortRooms(rooms, sortBy = 'name', direction = 'asc') {
  */
 export function getRoomStatistics(rooms) {
   if (!Array.isArray(rooms)) {
-    console.warn('⚠️ getRoomStatistics: rooms non è un array');
+    
     return null;
   }
   
@@ -830,7 +803,7 @@ export function getRoomStatistics(rooms) {
  */
 export function filterRoomsByType(rooms, type) {
   if (!Array.isArray(rooms)) {
-    console.warn('⚠️ filterRoomsByType: rooms non è un array');
+    
     return [];
   }
 
@@ -854,7 +827,7 @@ export function filterRoomsByType(rooms, type) {
  */
 export function separateRoomsByType(rooms) {
   if (!Array.isArray(rooms)) {
-    console.warn('⚠️ separateRoomsByType: rooms non è un array');
+    
     return { physical: [], virtual: [] };
   }
 
@@ -881,7 +854,7 @@ export function separateRoomsByType(rooms) {
  */
 export function getPhysicalRoomStatistics(physicalRooms) {
   if (!Array.isArray(physicalRooms)) {
-    console.warn('⚠️ getPhysicalRoomStatistics: physicalRooms non è un array');
+    
     return {
       total: 0,
       byFloor: {},

@@ -28,11 +28,11 @@ function generateRequestId() {
  */
 export async function handleLogin(email, password) {
     const requestId = generateRequestId();
-    console.log(`🔐 [${requestId}] Avvio processo di login per:`, email);
+    
     
     // Validazione input avanzata
     if (!email || !password) {
-      console.warn(`⚠️ [${requestId}] Login fallito: campi mancanti`);
+      
       return {
         success: false,
         error: "Email e password sono obbligatorie",
@@ -46,7 +46,7 @@ export async function handleLogin(email, password) {
     
     // Validazione formato email
     if (!isValidEmail(email)) {
-      console.warn(`⚠️ [${requestId}] Login fallito: formato email non valido`);
+      
       return {
         success: false,
         error: "Il formato dell'email non è valido",
@@ -56,7 +56,7 @@ export async function handleLogin(email, password) {
     
     // Validazione lunghezza password
     if (password.length < 1) {
-      console.warn(`⚠️ [${requestId}] Login fallito: password vuota`);
+      
       return {
         success: false,
         error: "La password non può essere vuota",
@@ -65,7 +65,7 @@ export async function handleLogin(email, password) {
     }
 
     try {
-      console.log(`📡 [${requestId}] Invio richiesta di login al server...`);
+      
       
       const response = await fetch("/api/auth/login", {
         method: "POST",
@@ -76,19 +76,12 @@ export async function handleLogin(email, password) {
         body: JSON.stringify({ email, password }),
       });
       
-      console.log(`📡 [${requestId}] Risposta ricevuta - Status:`, response.status);
+      
       
       const data = await response.json();
-      console.log(`🔍 [${requestId}] Dati ricevuti:`, {
-        success: data.success,
-        hasToken: !!(data.data?.token),
-        sessionId: data.sessionId,
-        message: data.message,
-        error: data.error
-      });
-      
+            
       if (!response.ok) {
-        console.error(`❌ [${requestId}] Login fallito - Status: ${response.status}`);
+        
         
         // Gestione errori con struttura standardizzata del backend
         let errorMessage;
@@ -96,23 +89,17 @@ export async function handleLogin(email, password) {
         // CORREZIONE: Usa sempre la struttura standardizzata del backend
         if (data.userMessage) {
           errorMessage = data.userMessage; // ✅ Messaggio user-friendly dal backend
-          console.log(`📝 [${requestId}] Usando userMessage dal backend`);
+          
         } else if (data.message) {
           errorMessage = data.message;     // Messaggio tecnico come fallback
-          console.log(`📝 [${requestId}] Usando message dal backend`);
+          
         } else {
           errorMessage = "Errore di login sconosciuto";
-          console.warn(`⚠️ [${requestId}] Nessun messaggio dal backend, usando fallback`);
+          
         }
-        
-        // Log sessionId se presente per debugging
-        if (data.sessionId) {
-          console.log(`🔍 [${requestId}] SessionId errore:`, data.sessionId);
-        }
-        
+
         // Fallback per errori senza struttura (solo se non abbiamo messaggi dal backend)
         if (!errorMessage) {
-          console.warn(`⚠️ [${requestId}] Usando fallback per status ${response.status}`);
           switch (response.status) {
             case 400:
               errorMessage = "Dati di login non validi. Controlla email e password.";
@@ -137,14 +124,14 @@ export async function handleLogin(email, password) {
           }
         }
         
-        console.error(`❌ [${requestId}] Login definitivamente fallito:`, errorMessage);
+        
         return {
           success: false,
           error: errorMessage,
           data: null
         };
       } else {
-        console.log(`✅ [${requestId}] Login riuscito, elaborazione risposta...`);
+        
         
         // Gestione successo con la struttura standardizzata del backend
         let token = null;
@@ -152,7 +139,7 @@ export async function handleLogin(email, password) {
         
         // CORREZIONE: Backend usa sempre struttura {success: true, data: {...}, message, sessionId, timestamp}
         if (data.success && data.data && data.data.token) {
-          console.log(`✅ [${requestId}] Struttura risposta corretta dal backend`);
+          
           token = data.data.token;
           userData = {
             user: data.data.user,
@@ -166,12 +153,12 @@ export async function handleLogin(email, password) {
           // Salva il sessionId per eventuali operazioni future
           if (data.sessionId) {
             localStorage.setItem("sessionId", data.sessionId);
-            console.log(`🔍 [${requestId}] SessionId salvato:`, data.sessionId);
+            
           }
         } 
         // Fallback per strutture legacy (mantenere compatibilità)
         else if (data.token) {
-          console.warn(`⚠️ [${requestId}] Usando struttura login legacy - considera di aggiornare il backend`);
+          
           token = data.token;
           userData = {
             ...data,
@@ -183,7 +170,7 @@ export async function handleLogin(email, password) {
         
         // Validazione token
         if (!token || token.trim().length === 0) {
-          console.error(`❌ [${requestId}] Token mancante o vuoto nella risposta`);
+          
           return {
             success: false,
             error: "Login riuscito ma token mancante. Contatta l'amministratore.",
@@ -195,9 +182,8 @@ export async function handleLogin(email, password) {
         try {
           localStorage.setItem("token", token);
           document.cookie = `token=${token}; path=/; secure; samesite=strict`;
-          console.log(`💾 [${requestId}] Token salvato correttamente`);
-        } catch (storageError) {
-          console.error(`❌ [${requestId}] Errore salvataggio token:`, storageError);
+          
+        } catch {
           return {
             success: false,
             error: "Impossibile salvare le credenziali. Verifica lo spazio disponibile.",
@@ -205,7 +191,7 @@ export async function handleLogin(email, password) {
           };
         }
         
-        console.log(`🎉 [${requestId}] Login completato con successo`);
+        
         return {
           success: true,
           error: null,
@@ -213,7 +199,7 @@ export async function handleLogin(email, password) {
         };
       }
     } catch (networkError) {
-      console.error(`🌐 [${requestId}] Errore di rete durante il login:`, networkError);
+      
       
       // Analisi dettagliata dell'errore di rete
       let errorMessage = "Impossibile connettersi al server.";
@@ -261,13 +247,9 @@ export async function getCurrentUser(){
             // Backend usa sempre: userMessage per utenti, message per dettagli tecnici
             errorMessage = errorData.userMessage || errorData.message || "Errore nel caricamento del profilo";
             
-            // Log del sessionId se presente per debugging
-            if (errorData.sessionId) {
-              console.log("🔍 SessionId errore:", errorData.sessionId);
-            }
-          } catch (parseError) {
+          } catch {
             // Fallback se non riusciamo a parsare la risposta di errore
-            console.warn("⚠️ Impossibile parsare risposta di errore:", parseError);
+            
           }
           
           
@@ -309,7 +291,7 @@ export async function getCurrentUser(){
           if (shouldRemoveToken) {
             localStorage.removeItem("token");
             document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-            console.warn("Token rimosso a causa di errore:", response.status);
+            
           }
           
           return {
@@ -320,12 +302,12 @@ export async function getCurrentUser(){
         }
         
         const data = await response.json();
-        console.log("🔍 Risposta completa da /api/me:", data);
+        
         
         // CORREZIONE: Backend usa sempre struttura standardizzata {success, data, message, etc}
         // I dati utente sono sempre in data.data secondo i controller backend
         const userData = data.success && data.data ? data.data : null;
-        console.log("🔍 Dati utente estratti:", userData);
+        
         
         // Validazione più flessibile - controlla multiple proprietà che indicano un utente valido
         const hasValidUserData = userData && (
@@ -336,14 +318,7 @@ export async function getCurrentUser(){
         );
         
         if (!hasValidUserData) {
-          console.error("🔍 Validazione fallita. Struttura ricevuta:", {
-            userData,
-            hasId: !!userData?.id,
-            hasUsername: !!userData?.username,
-            hasEmail: !!userData?.email,
-            hasNome: !!userData?.nome
-          });
-          
+
           return {
             success: false,
             error: "Dati utente incompleti ricevuti dal server. Riprova o contatta l'amministratore.",
@@ -351,7 +326,7 @@ export async function getCurrentUser(){
           };
         }
         
-        console.log("✅ Validazione utente riuscita:", userData);
+        
         
         return {
           success: true,
@@ -360,7 +335,7 @@ export async function getCurrentUser(){
         };
 
       } catch (networkError) {
-        console.error("Errore di rete in getCurrentUser:", networkError);
+        
         
         // Analizza il tipo di errore di rete per dare un messaggio più specifico
         let errorMessage = "Errore di connessione sconosciuto";
@@ -384,23 +359,18 @@ export async function getCurrentUser(){
 }
 
 //Funzione per logout
-export const handleLogout = (reason = null) => {
+export const handleLogout = () => {
     try {
       // Rimuovi dati di autenticazione
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       localStorage.removeItem("sessionId"); // Rimuovi anche il sessionId
       document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      
-      // Log del motivo del logout per debugging
-      if (reason) {
-        console.log("Logout eseguito per:", reason);
-      }
-      
+ 
       window.location.href = "/login";
       
-    } catch (error) {
-      console.error("Errore durante il logout:", error);
+    } catch {
+      
       // Anche se c'è un errore, forza comunque il redirect
       window.location.href = "/login";
     }
@@ -411,28 +381,23 @@ export const isCurrentUserAdmin = async () => {
   try {
     const user = await getCurrentUser();
     if (!user) {
-      console.log("🔐 Nessun utente trovato");
+      
       return false;
     }
     
-    console.log("🔐 Struttura completa utente:", user);
+    
     
     // Estraiamo i dati utente dalla risposta
     const userData = user.data || user;
-    console.log("🔐 Dati utente estratti:", userData);
+    
     
     // Dai test sappiamo che il ruolo è in userData.ruolo come stringa "admin"
     const isAdmin = userData.ruolo === "admin" || 
                    userData.ruolo === "ADMIN" || 
                    userData.role === "admin" || 
                    userData.role === "ADMIN";
-    
-    console.log("🔐 Controllo ruolo:", userData.ruolo || userData.role);
-    console.log("🔐 Utente è admin:", isAdmin);
-    
     return isAdmin;
-  } catch (error) {
-    console.error("🔐 Errore verifica admin:", error);
+  } catch {
     return false;
   }
 };

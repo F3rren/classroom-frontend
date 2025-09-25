@@ -18,22 +18,22 @@ export function useRooms() {
     setError(null);
 
     try {
-      console.log('🏠 useRooms: Caricamento stanze...');
+      
       const result = await getRoomList();
 
       if (result.success) {
         setRooms(result.data || []);
-        console.log(`✅ useRooms: Caricate ${result.data?.length || 0} stanze`);
+        
       } else {
         setError(result.error || 'Errore nel caricamento delle stanze');
         setRooms([]);
-        console.error('❌ useRooms: Errore caricamento stanze:', result.error);
+        
       }
     } catch (err) {
       const errorMessage = 'Errore di connessione durante il caricamento delle stanze';
       setError(errorMessage);
       setRooms([]);
-      console.error('❌ useRooms: Errore di rete:', err);
+      
     } finally {
       setLoading(false);
     }
@@ -41,7 +41,7 @@ export function useRooms() {
 
   // Funzione per ricaricare le stanze (esposta per componenti)
   const refreshRooms = useCallback(() => {
-    console.log('🔄 useRooms: Refresh richiesto');
+    
     loadRooms();
   }, [loadRooms]);
 

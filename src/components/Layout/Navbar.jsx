@@ -12,14 +12,14 @@ export default function Navbar({ currentPage }) {
       
       if (result === null) {
         // Nessun token, utente non loggato
-        console.log("Nessun token trovato");
+        
         setUser(null);
       } else if (result.success) {
         // Login valido, estrai i dati utente
         setUser(result.data);
       } else {
         // Errore nel caricamento
-        console.error("Errore caricamento utente:", result.error);
+        
         setUser(null);
       }
     };

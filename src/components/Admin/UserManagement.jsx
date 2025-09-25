@@ -71,7 +71,7 @@ export default function UserManagement({ currentUser }) {
           if (result.success) {
             // Assicuriamoci che result.data sia un array
             const usersData = Array.isArray(result.data) ? result.data : [];
-            console.log("📊 Caricati", usersData.length, "utenti");
+            
             setUsers(usersData);
             setError(null);
             break;
